@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "start": "tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test tests/core.test.ts"
+    "test": "tsx --test tests/core.test.ts",
+    "ui-shots": "node tests/ui-shots.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

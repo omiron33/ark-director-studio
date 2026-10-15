@@ -103,7 +103,10 @@ Projects and their media live under `data/` (not committed).
 ```bash
 npm run typecheck
 npm test
+npm run ui-shots -- http://localhost:5320 shots   # every tab at 2560x1440: screenshots, overflow, console errors
 ```
+
+Set `CHROME` to a Chrome or Chromium binary if it isn't at the macOS default.
 
 ## Credits
 
