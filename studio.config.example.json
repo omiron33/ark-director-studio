@@ -1,0 +1,14 @@
+{
+  "port": 5320,
+  "comfyUrl": "http://127.0.0.1:8188",
+  "gpuDashboard": "http://127.0.0.1:5299",
+  "ark": {
+    "machine": "my-mac",
+    "engine": "/path/to/ark-video-studio",
+    "songs": "/path/to/songs",
+    "node": "/opt/homebrew/bin/node"
+  },
+  "agents": {
+    "claude": { "cmd": "/Users/me/.local/bin/claude", "args": ["-p", "--output-format", "text"], "ssh": "my-mac" }
+  }
+}
