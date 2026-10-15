@@ -6,6 +6,7 @@
 #   blender -b --factory-startup -P blender/greybox.py -- --spec shot.json --out frames_dir
 #
 # spec: { fps, frames, width, height, mode: 'shot' | 'turnaround', mist, sun: {azimuth, elevation},
+#         (mist is accepted but not drawn: the prompt carries it)
 #         camera: {from: [x,y,z], to: [x,y,z], look: [x,y,z], look2?: [x,y,z], lens},
 #         actors: [{label, pose, x, z, heading, x2?, z2?, pose2?, y?, model?}],
 #         props: [{label, kind, x, z, w, h, d, y?, rot?, tilt?, tilt2?}],
@@ -62,13 +63,10 @@ world = bpy.data.worlds.new('world')
 scene.world = world
 world.use_nodes = True
 wn = world.node_tree.nodes
-wn['Background'].inputs['Color'].default_value = (0.035, 0.037, 0.042, 1)
+wn['Background'].inputs['Color'].default_value = (0.10, 0.10, 0.11, 1)  # bright enough that every shape reads in the guide
 wn['Background'].inputs['Strength'].default_value = 1.0
+# No world volume: EEVEE's world volume extinguishes the sun, and the guide only needs shapes. Mist lives in the prompt.
 mist = float(spec.get('mist', 0) or 0)
-if mist > 0 and EEVEE:
-    vs = wn.new('ShaderNodeVolumeScatter')
-    vs.inputs['Density'].default_value = 0.002 + 0.02 * mist
-    world.node_tree.links.new(vs.outputs[0], wn['World Output'].inputs['Volume'])
 
 
 def hexrgb(h, d=(0.6, 0.6, 0.6)):
@@ -196,8 +194,15 @@ def figure(name, model, pose_name):
     long_skirt = costume in ('robe', 'regal', 'shroud')
     for side in (-1, 1):
         sw = math.radians(pose['legs']) * side
-        foot = Vector((side * 0.1 * k, math.sin(sw) * hip, max(0.05, hip - math.cos(sw) * hip)))
-        cyl((side * 0.1 * k, 0, hip), foot, 0.075 * k * wide, SKIN if costume == 'loincloth' else cloth, root)
+        leg_m = SKIN if costume == 'loincloth' else cloth
+        if pose['crouch'] >= 0.3:
+            # folded: thigh forward to a knee near the ground, shin back under the body
+            knee = Vector((side * 0.11 * k, -0.42 * k, 0.1 * k))
+            cyl((side * 0.1 * k, 0, hip), knee, 0.075 * k * wide, leg_m, root)
+            cyl(knee, (side * 0.11 * k, 0.05 * k, 0.06 * k), 0.07 * k * wide, leg_m, root)
+        else:
+            foot = Vector((side * 0.1 * k, math.sin(sw) * hip, max(0.05, hip - math.cos(sw) * hip)))
+            cyl((side * 0.1 * k, 0, hip), foot, 0.075 * k * wide, leg_m, root)
         ar = math.radians(pose['arms'])
         sh = Vector((side * 0.22 * k * wide, neck.y, neck.z - 0.05 * k))
         hand = Vector((sh.x + side * math.sin(ar) * 0.25 * k * (0 if pose['fwd'] > 0.5 else 1), sh.y - 0.1 * k - pose['fwd'] * 0.55 * k, sh.z - math.cos(ar) * 0.6 * k))
@@ -234,12 +239,13 @@ def figure(name, model, pose_name):
         cyl(Vector((right_hand.x, right_hand.y, 0.02)), Vector((right_hand.x, right_hand.y, H + 0.2 * k)), 0.025 * k, wood, root)
     elif carry in ('chains', 'keys'):
         iron = mat('iron', (0.22, 0.23, 0.25))
-        for i in range(6 if carry == 'chains' else 1):
-            bpy.ops.mesh.primitive_torus_add(major_radius=(0.32 if carry == 'chains' else 0.12) * k * wide, minor_radius=0.025 * k, location=(0, 0, hip + (i * 0.09 - 0.1) * k if carry == 'chains' else hip))
+        for i in range(3 if carry == 'chains' else 1):
+            bpy.ops.mesh.primitive_torus_add(major_radius=(0.24 if carry == 'chains' else 0.12) * k * wide, minor_radius=0.02 * k, location=(0, 0, hip + (i * 0.16 - 0.05) * k if carry == 'chains' else hip))
             add(bpy.context.object, iron, root)
     glow = float(model.get('glow', 0) or 0)
     if glow > 0:
-        sphere(head_c + Vector((0, 0.16 * k, 0.03)), 0.2 * k, mat('halo', (1.0, 0.95, 0.82), emit=2.5 * glow), root, 'halo')
+        # a disc of light behind the head (a halo the camera sees around the face, not over it)
+        cyl(head_c + Vector((0, 0.17 * k, 0.02)), head_c + Vector((0, 0.19 * k, 0.02)), 0.24 * k, mat('halo', (1.0, 0.95, 0.82), emit=2.5 * glow), root, verts=32, name='halo')
         bpy.ops.object.light_add(type='POINT', location=head_c + Vector((0, -0.3 * k, 0.2 * k)))
         L = bpy.context.object
         L.data.energy = 350 * glow * k * k
@@ -338,7 +344,7 @@ def light(i, L):
     s = sphere(B((L.get('x', 0), L.get('y', 2), L.get('z', 0))), size, mat(f'light{i}', rgb, emit=5), None, L.get('label', f'light{i}'))
     bpy.ops.object.light_add(type='POINT', location=(0, 0, 0))
     P = bpy.context.object
-    P.data.energy = 600 * size * size * 4
+    P.data.energy = 400 * size * size * 4
     P.data.color = rgb
     P.data.shadow_soft_size = size
     P.parent = s
@@ -391,7 +397,7 @@ if MODE == 'shot':
 sun = spec.get('sun', {'azimuth': 40, 'elevation': 35})
 bpy.ops.object.light_add(type='SUN')
 s = bpy.context.object
-s.data.energy = float(sun.get('strength', 2.5))
+s.data.energy = max(1.5, float(sun.get('strength', 2.5)))  # the guide needs readable shapes; mood comes from the prompt
 s.rotation_euler = (math.radians(90 - sun.get('elevation', 35)), 0, math.radians(sun.get('azimuth', 40)))
 
 # smooth camera and figure moves, no ease jerk at the ends
