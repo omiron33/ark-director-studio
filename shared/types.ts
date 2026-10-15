@@ -127,7 +127,7 @@ export interface Camera {
 }
 
 // x2/z2 (and pose2) are where the figure has walked to, and how it stands, by the end of the shot.
-export interface GreyboxActor { castId?: string; label: string; pose: string; x: number; z: number; heading: number; x2?: number; z2?: number; pose2?: string; y?: number }
+export interface GreyboxActor { castId?: string; label: string; pose: string; x: number; z: number; heading: number; x2?: number; z2?: number; pose2?: string; y?: number; model?: Partial<CharacterModel> } // model: per-shot changes to the character's model, e.g. a crowd's size
 export interface GreyboxProp { label: string; kind: 'box' | 'cylinder' | 'plane' | 'wall' | 'arch' | 'stairs' | 'rock'; x: number; z: number; w: number; h: number; d: number; y?: number; rot?: number; tilt?: number; tilt2?: number }
 // A light in the greybox: Christ's light, a fire fissure. Drawn as a bright sphere so H3 sees where light comes from.
 export interface GreyboxLight { label: string; x: number; y: number; z: number; size: number; color?: string; x2?: number; y2?: number; z2?: number }

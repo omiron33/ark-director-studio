@@ -25,7 +25,7 @@ export function greyboxSpec(p: Project, seq: Sequence | undefined, shot: Shot, g
     mist: gb.mist ?? 0, sun: gb.sun, camera: gb.camera,
     props: [...(useSet ? seq?.set ?? [] : []), ...gb.props],
     lights: [...(useSet ? seq?.setLights ?? [] : []), ...(gb.lights ?? [])],
-    actors: gb.actors.map((a) => ({ ...a, model: a.castId ? modelOf(p.cast.find((c) => c.id === a.castId)) : undefined })),
+    actors: gb.actors.map((a) => ({ ...a, model: a.castId || a.model ? { ...modelOf(p.cast.find((c) => c.id === a.castId)), ...(a.model ?? {}) } : undefined })),
   };
 }
 
