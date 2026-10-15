@@ -298,8 +298,8 @@ def prop(pr):
     m = mat('prop-' + kind, (0.56, 0.52, 0.45) if kind in ('arch', 'wall') else (0.5, 0.5, 0.48))
     pivot = bpy.data.objects.new(pr.get('label', kind), None)
     scene.collection.objects.link(pivot)
-    # the pivot is the front bottom edge, so a tilt topples the prop forward (towards -z, the camera side)
-    pivot.location = B((pr.get('x', 0), y0, pr.get('z', 0) - d / 2))
+    # the pivot is the bottom edge nearest the camera (+z), so a positive tilt topples the prop towards the camera
+    pivot.location = B((pr.get('x', 0), y0, pr.get('z', 0) + d / 2))
     pivot.rotation_euler = (0, 0, math.radians(pr.get('rot', 0)))
     c = Vector((0, d / 2, h / 2))  # local, Blender axes: +y is away from the camera
     if kind == 'cylinder':
