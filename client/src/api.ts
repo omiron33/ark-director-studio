@@ -16,12 +16,14 @@ export type Op =
 export interface ProjectSummary { id: string; title: string; kind: string; updated: string; ark?: string; sequences: number; shots: number; takes: number; cover?: string }
 export interface Song { dir: string; path: string; title: string; mode: string; scenes: number; modified: string }
 
+export interface Stage { label: string; expert: boolean; gpu: boolean; looks: string[]; kinds?: string[] }
+
 export const api = {
   status: (fresh = false) => req<StudioStatus>('GET', `/api/status${fresh ? '?fresh=1' : ''}`),
   gpu: () => req<any>('GET', '/api/gpu'),
   projects: () => req<ProjectSummary[]>('GET', '/api/projects'),
   project: (id: string) => req<Project>('GET', `/api/projects/${id}`),
-  create: (b: { title: string; kind: string; script?: string; style?: string }) => req<Project>('POST', '/api/projects', b),
+  create: (b: { title: string; kind: string; videoType?: string; script?: string; style?: string }) => req<Project>('POST', '/api/projects', b),
   remove: (id: string) => req('DELETE', `/api/projects/${id}`),
   ops: (id: string, ops: Op[]) => req<Project>('PATCH', `/api/projects/${id}`, { ops }),
   post: <T = any>(id: string, what: string, body: unknown) => req<T>('POST', `/api/projects/${id}/${what}`, body),
@@ -29,7 +31,7 @@ export const api = {
   jobs: () => req<Job[]>('GET', '/api/jobs'),
   cancel: (jid: string) => req('POST', `/api/jobs/${jid}/cancel`),
   songs: () => req<Song[]>('GET', '/api/ark/songs'),
-  stages: () => req<Record<string, { label: string; expert: boolean; gpu: boolean }>>('GET', '/api/ark/stages'),
+  stages: () => req<Record<string, Stage>>('GET', '/api/ark/stages'),
   importSong: (songPath: string) => req<Project>('POST', '/api/ark/import', { songPath }),
   grokOpen: () => req('POST', '/api/grok/open'),
   grokClose: () => req('POST', '/api/grok/close'),

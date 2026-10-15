@@ -3,7 +3,7 @@ import { Film, Settings2, Play, Trash2, Star, RefreshCw, Sparkles, X, ListVideo,
 import { api, media } from '../api';
 import { useStudio, useSelection, fmtTime } from '../store';
 import { Card, Btn, Edit, Select, Field, Segmented, Expert, Basic, Empty, Media, StatusTag, Cols, Col } from '../ui';
-import { CAMERA_PRESETS } from '../../../shared/types';
+import { CAMERA_PRESETS, cohesionOn } from '../../../shared/types';
 
 export function ShotTab() {
   const { project: p, seq: q, shot: s } = useSelection();
@@ -119,7 +119,9 @@ export function ShotTab() {
               })}
             </div>
           </Field>
-          <label className="check"><input type="checkbox" checked={s.chainFromPrevious} onChange={(e) => set(['chainFromPrevious'], e.target.checked)} />Start from the previous shot's last frame</label>
+          {cohesionOn(p.render)
+            ? <label className="check"><input type="checkbox" checked={s.chainFromPrevious} onChange={(e) => set(['chainFromPrevious'], e.target.checked)} />Start from the previous shot's last frame</label>
+            : <p className="muted small">Code film: shot cohesion is relaxed, so takes don't chain or carry character sheets (turn it on under Ark engine, Video type).</p>}
         </div>
       </Card>
 
@@ -149,7 +151,7 @@ export function ShotTab() {
             <Btn onClick={() => run(() => api.post(p.id, 'storyboard', { shotId: s.id }), 'Frame queued')}><ImageIcon size={14} />New frame</Btn>
             <Expert><Btn onClick={() => run(() => api.post(p.id, 'storyboard', { shotId: s.id, engine: 'grok' }), 'Grok frame queued')}><Sparkles size={14} />Grok frame</Btn></Expert>
           </div>
-          {s.source === 'code' ? <p className="muted small">Code shots render in the Ark engine tab.</p> : null}
+          {s.source === 'code' ? <p className="muted small">Code shots render in the Ark engine tab at the film's tier. Frames and sketches still work here for planning.</p> : null}
           {active.map((j) => <div key={j.id} className="job-inline"><StatusTag s={j.status} /><span className="grow">{j.note}</span><button className="icon-btn" onClick={() => run(() => api.cancel(j.id))}><X size={13} /></button></div>)}
         </div>
       </Card>

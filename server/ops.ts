@@ -5,7 +5,7 @@
 //   { op: 'remove', path: ['sequences', 'q1', 'shots', 's1'] }
 //   { op: 'move', path: ['sequences', 'q1', 'shots'], id: 's1', index: 0, to?: ['sequences', 'q2', 'shots'] }
 // A path step into an array is an element's id (or a numeric index).
-import { newShot, newSequence, uid } from './store.ts';
+import { newShot, newSequence, uid, shotDefaults } from './store.ts';
 import type { Project } from '../shared/types.ts';
 
 export type Op =
@@ -32,9 +32,9 @@ function walk(root: any, path: (string | number)[]) {
 }
 
 // New elements get fresh ids and full defaults.
-function fill(path: (string | number)[], value: any) {
+function fill(p: Project, path: (string | number)[], value: any) {
   const last = path[path.length - 1];
-  if (last === 'shots') return newShot(value);
+  if (last === 'shots') return newShot({ ...shotDefaults(p), ...value });
   if (last === 'sequences') return { ...newSequence(value?.title), ...value, id: uid('q') };
   if (last === 'cast') return { id: uid('c'), name: 'New character', description: '', ...value };
   if (last === 'looks') return { id: uid('l'), name: 'New look', prompt: '', ...value };
@@ -55,7 +55,7 @@ export function applyOps(p: Project, ops: Op[]) {
     } else if (o.op === 'insert') {
       const arr = walk(p, o.path);
       if (!Array.isArray(arr)) throw Error('insert needs an array');
-      const v = fill(o.path, o.value);
+      const v = fill(p, o.path, o.value);
       arr.splice(o.index ?? arr.length, 0, v);
     } else if (o.op === 'remove') {
       const parent = walk(p, o.path.slice(0, -1));

@@ -59,9 +59,9 @@ const defaults = (): Config => ({
   ffprobe: findFfmpeg('ffprobe'),
   blender: findBlender(),
   // The Ark engine runs where its song folders live, reached over ssh by host alias.
-  ark: { machine: 'macmini', engine: '', songs: '', node: 'node' },
+  ark: { machine: 'ark-mac', engine: '', songs: '', node: 'node' },
   agents: {
-    claude: { cmd: 'claude', args: ['-p', '--output-format', 'text'], ...(process.platform === 'win32' ? { ssh: 'macmini' } : {}) },
+    claude: { cmd: 'claude', args: ['-p', '--output-format', 'text'], ...(process.platform === 'win32' ? { ssh: 'ark-mac' } : {}) },
     codex: { cmd: codexBin.cmd, args: [...codexBin.pre, 'exec', '--skip-git-repo-check'] },
     grok: { cmd: 'grok', args: ['-p'] },
   },

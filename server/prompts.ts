@@ -1,5 +1,5 @@
 // Turning a shot into words for a model. One place, so storyboards, takes and Grok all agree.
-import { CAMERA_PRESETS, type Project, type Shot, type Sequence } from '../shared/types.ts';
+import { CAMERA_PRESETS, cohesionOn, type Project, type Shot, type Sequence, type Sketch } from '../shared/types.ts';
 
 export function shotPrompt(p: Project, seq: Sequence, shot: Shot, { forStill = false } = {}) {
   const cam = CAMERA_PRESETS[shot.camera.preset];
@@ -11,11 +11,24 @@ export function shotPrompt(p: Project, seq: Sequence, shot: Shot, { forStill = f
     cam ? `${cam.words}${shot.camera.lens || cam.lens ? `, ${shot.camera.lens || cam.lens} lens` : ''}.` : '',
     shot.camera.move && !forStill ? `Camera: ${shot.camera.move}.` : '',
     cast.length ? `In the shot: ${cast.join('; ')}.` : '',
-    seq.continuity.plan ? `Continuity: ${seq.continuity.plan}` : '',
+    seq.continuity.plan && cohesionOn(p.render) ? `Continuity: ${seq.continuity.plan}` : '',
     look?.prompt ? `Look: ${look.prompt}` : '',
     p.style ? `Style: ${p.style}` : '',
   ];
   return parts.filter(Boolean).join('\n');
+}
+
+// How closely a frame follows Shane's stick-figure sketch.
+export const SKETCH_FOLLOW: Record<string, string> = {
+  exact: 'Follow the sketch exactly: the same number of people, each where the sketch puts them, in the pose its lines draw, at the size it draws them, with the camera framing the sketch shows.',
+  loose: 'Use the sketch as the layout: where people and things stand and roughly how they are posed. Improve the composition where it helps.',
+  idea: 'Take the sketch as a rough idea of the scene and compose a strong cinematic frame from it.',
+};
+export function sketchPrompt(base: string, sk: Sketch, follow = 'exact') {
+  return `Image 1 is a rough hand sketch of this frame: stick figures are people (a circle is a head, lines are the body, arms and legs), boxes and lines are buildings, furniture, objects and the ground, arrows show which way someone moves or looks, and written words label what a shape is. Never draw the sketch itself, its lines, or its labels; paint the real scene it describes.
+${SKETCH_FOLLOW[follow] ?? SKETCH_FOLLOW.exact}
+${sk.note ? `What the sketch shows: ${sk.note}\n` : ''}
+${base}`;
 }
 
 export function sheetPrompt(p: Project, name: string, description: string) {
@@ -27,8 +40,14 @@ export function lookPrompt(p: Project, words: string) {
 }
 
 // The ask handed to Claude, Codex or Grok to split a story into sequences and shots.
+const LOOK_WORDS: Record<string, string> = {
+  code: 'Every shot is drawn in code by the Ark engine (raymarched scenes, words placed in the world), so shots can be any length and continuity between shots is the director\'s choice, not a model\'s.',
+  photoreal: 'Each shot is a code scene repainted as live action by MiniMax H3 (4 to 15 second pieces at 24 fps); people and places must hold from shot to shot.',
+  mixed: 'A music video: generated MiniMax H3 live-action shots (4 to 15 seconds at 24 fps) cut with code-drawn shots on the beat.',
+  live: 'Every shot is a MiniMax H3 live-action clip of 4 to 15 seconds at 24 fps, blocked with a Blender greybox; people and places must hold from shot to shot.',
+};
 export function storyParsePrompt(p: Project, mode: 'basic' | 'expert') {
-  return `You are a film director breaking a ${p.kind === 'song' ? 'song (lyrics)' : 'story'} into a shot list for an AI video pipeline (MiniMax H3 live-action clips of 4 to 15 seconds at 24 fps, plus code-drawn shots).
+  return `You are a film director breaking a ${p.kind === 'song' ? 'song (lyrics)' : 'story'} into a shot list for the Ark video pipeline. ${LOOK_WORDS[p.render?.look ?? 'code'] ?? LOOK_WORDS.code}
 
 Rules:
 - Group shots into sequences. A sequence is one place and one continuous stretch of time; cut to a new sequence only on a real change of place or time.

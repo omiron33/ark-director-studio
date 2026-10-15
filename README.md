@@ -19,20 +19,53 @@ their header and scroll inside themselves.
 | Story | The script or lyrics, the film style and audio, and the breakdown into sequences and shots by Claude, Codex or Grok Build |
 | Storyboard | One card per shot: frame, prompt, camera and characters, plus regenerate, reorder and delete. Frame the rest, take a whole sequence, assemble it. The sequence's continuity plan sits beside it |
 | Shot | The chosen take large, every take with ratings, the shot's settings, and what the next take will start from |
+| Sketch | Draw the frame yourself with stick figures, lines, boxes, circles, arrows and labels, then generate storyboard frames that follow the drawing |
 | Cast & looks | Character sheets and look images. Sheets ride along on every take a character is in |
 | Greybox | A top-down plan of figures, props and the camera move, rendered in Blender as the guide clip for H3 |
 | Timeline | A live cut of the chosen takes with the audio under them, the tracks, assembling, and an agent's review of the whole sequence |
 | Queue | Studio jobs and logs, and the machine's GPU queue across every agent |
-| Ark engine | Pull and push film.json, and the engine's own steps: storyboard, draft, stills, photoreal takes, checks, critic |
+| Ark engine | The film's video type, pull and push film.json, and the engine's own steps for that type: storyboard, draft, stills, the render at its tier, photoreal repaints, music video, checks, critic |
 | Settings | Connections, agents, the Grok Imagine window |
 
 **Basic** shows the prompt, length, camera, characters and look, and picks everything else. **Expert**
 adds the engine per take, seeds, steps, greybox guide steps, start-frame overrides, lens and move,
 Grok frames and every engine command with its options.
 
+## Video types
+
+Every film has a video type, and every flag the Ark engine has is on it:
+
+| Video type | Pictures | Shot cohesion |
+| --- | --- | --- |
+| Ultra code lyric film (the default) | Pure code at the ultra tier, words drawn in the world | Relaxed |
+| Premium code lyric film | Pure code, 60 fps premium tier | Relaxed |
+| Fast code preview | 30 fps, no review gates | Relaxed |
+| Photoreal lyric film | Code scenes repainted by H3, words stay code | On |
+| Music video | H3 shots cut with code shots, pop camera | On for generated shots |
+| Narrated story, code or photoreal | A narrated story through the story pipeline | Relaxed for code, on for photoreal |
+| Live-action film | H3 from prompts, sheets and greyboxes | On |
+
+Expert mode sets each flag on its own: the code tier (fast, standard, premium, ultra), 1080p or 4K,
+words in the scene, over the picture or none, shot cohesion (auto, on, off), and for H3 repaints the
+long-take chaining (bridges, or Continuum on trial), the style reference, word tucking, steps, steered
+steps and proxy blur, plus the music video's pop camera and rendering code scenes on the Mac only.
+The Ark engine tab passes them to the engine as its own flags and writes the tier and resolution back
+to film.json on push.
+
+## Sketch a scene
+
+The Sketch tab is for building a frame by hand. Drag from head to feet to place a stick figure, and add
+lines, boxes, circles, arrows (who moves or looks where) and labels. Shapes stay editable: select,
+move, drag an end, undo. Say in words who is who, pick how closely to follow the drawing (exactly, as
+a layout, or as an idea) and generate up to four frames. Qwen-Image sees the drawing as a reference
+image next to the shot's prompt. Pick one and it becomes the shot's storyboard frame, which the next
+take starts from.
+
 ## Shots that stay consistent
 
-The easy path is the cohesive one:
+Generated pictures need cohesion, so for photoreal, music video and live-action films the easy path is
+the cohesive one. Pure code films draw every frame from song time, so cohesion is relaxed there unless
+you turn it on:
 
 - Each sequence has one continuity plan (place, time, light, who stands where), added to every prompt in it.
 - Each take starts from the last frame of the take before it while the sequence chains; the first take starts from its storyboard frame.

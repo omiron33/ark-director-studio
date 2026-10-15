@@ -80,6 +80,31 @@ app.post('/api/projects/:id/storyboard-all', wrap((req) => {
   }
   return { queued: out.length };
 }));
+// Hand sketches: shapes plus the PNG the model sees. Saving an existing sketch id replaces it.
+app.post('/api/projects/:id/sketch', wrap(async (req) => {
+  const { shotId, sketchId, shapes = [], png, note } = req.body as { shotId: string; sketchId?: string; shapes: any[]; png?: string; note?: string };
+  const id = sketchId || store.uid('k');
+  const image = png ? store.saveMedia(P(req), 'sketches', `${id}-${Date.now()}.png`, Buffer.from(png.replace(/^data:image\/png;base64,/, ''), 'base64')) : undefined;
+  let out: any;
+  await store.mutate(P(req), (p) => {
+    const s = store.findShot(p, shotId).shot;
+    s.sketches = s.sketches ?? [];
+    const old = s.sketches.find((k) => k.id === id);
+    out = { id, shapes, note: note ?? old?.note, image: image ?? old?.image, at: store.now() };
+    s.sketches = [out, ...s.sketches.filter((k) => k.id !== id)].slice(0, 40);
+  });
+  jobs.projectChanged(P(req));
+  return out;
+}));
+app.post('/api/projects/:id/sketch-frames', wrap((req) => {
+  const { shotId, sketchId, count = 1, prompt, follow = 'exact', engine = 'comfy' } = req.body;
+  const p = store.readProject(P(req));
+  const { shot, seq } = store.findShot(p, shotId);
+  if (!shot.sketches?.some((k) => k.id === sketchId)) throw Error('save the sketch first');
+  const n = Math.min(4, Math.max(1, Number(count) || 1));
+  for (let i = 0; i < n; i++) jobs.enqueue('storyboard', `${p.title}: ${shot.title} frame from sketch`, { projectId: p.id, shotId, engine, prompt, sketchId, follow }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
+  return { queued: n };
+}));
 app.post('/api/projects/:id/take', wrap((req) => jobs.startTake(P(req), req.body.shotId, req.body.opts ?? {})));
 app.post('/api/projects/:id/takes-sequence', wrap(async (req) => {
   // queued in film order; each take reads the previous take's last frame when it starts
@@ -125,7 +150,7 @@ app.post('/api/projects/:id/assemble', wrap((req) => {
   return jobs.enqueue('assemble', `${p.title}: assemble ${q?.title ?? 'film'}`, { projectId: p.id, sequenceId: req.body.sequenceId }, { projectId: p.id, gpu: false, ref: { sequenceId: req.body.sequenceId } });
 }));
 
-app.get('/api/ark/stages', wrap(() => Object.fromEntries(Object.entries(ARK_STAGES).map(([k, v]) => [k, { label: v.label, expert: !!v.expert, gpu: !!v.gpu }]))));
+app.get('/api/ark/stages', wrap(() => Object.fromEntries(Object.entries(ARK_STAGES).map(([k, v]) => [k, { label: v.label, expert: !!v.expert, gpu: !!v.gpu, looks: v.looks, kinds: v.kinds }]))));
 app.get('/api/ark/songs', wrap(() => listSongs()));
 app.post('/api/ark/import', wrap(async (req) => {
   const { songPath, title } = req.body;

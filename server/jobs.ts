@@ -4,18 +4,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from './config.ts';
-import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousShot, newSequence, newShot } from './store.ts';
+import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousShot, newSequence, newShot, shotDefaults } from './store.ts';
 import { claimGpu, type GpuLease } from './gpuq.ts';
 import * as comfy from './comfy.ts';
 import { h3Graph, h3Len, imageGraph, ASPECTS } from './workflows.ts';
-import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt } from './prompts.ts';
+import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt } from './prompts.ts';
 import { lastFrame, assemble, probe } from './media.ts';
 import { renderGreybox, defaultGreybox } from './blender.ts';
 import { grokGenerate } from './grok.ts';
 import { runAgent, extractJson } from './agents.ts';
 import { runStage, pullSceneClip, ARK_STAGES } from './ark.ts';
 import type { Job, JobKind, Project, Take, AgentId, Shot } from '../shared/types.ts';
-import { CAMERA_PRESETS } from '../shared/types.ts';
+import { CAMERA_PRESETS, cohesionOn } from '../shared/types.ts';
 
 const FILE = path.join(config.dataDir, 'jobs.json');
 const jobs: Job[] = (() => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return []; } })();
@@ -85,11 +85,12 @@ type Ctx = { signal: AbortSignal; lease: GpuLease | null; log: (l: string) => vo
 const seed = () => Math.floor(Math.random() * 2 ** 31);
 const rel = (projectId: string, abs: string) => path.relative(mediaDir(projectId), abs).split(path.sep).join('/');
 
-async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9') {
+async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9', refFiles: string[] = []) {
   const [width, height] = ASPECTS[aspect] ?? ASPECTS['16:9'];
   const s = seed();
-  ctx.log(`Qwen-Image ${width}x${height}, seed ${s}`);
-  const r = await comfy.run(imageGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}` }), { signal: ctx.signal, onBeat: (sec) => ctx.lease?.progress(`${sec}s`) });
+  const refs = await Promise.all(refFiles.map((f, i) => comfy.upload(mediaPath(projectId, f), `ads-${projectId}-ref${i}-${path.basename(f)}`)));
+  ctx.log(`Qwen-Image ${width}x${height}, seed ${s}${refs.length ? `, following ${refs.length} sketch` : ''}`);
+  const r = await comfy.run(imageGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}`, refs }), { signal: ctx.signal, onBeat: (sec) => ctx.lease?.progress(`${sec}s`) });
   const o = r.outputs.find((x) => /\.(png|jpe?g|webp)$/i.test(x.filename));
   if (!o) throw Error('ComfyUI returned no image');
   const dest = mediaPath(projectId, `${sub}/${Date.now()}-${s}.png`);
@@ -104,14 +105,19 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
-    const text = prompt ?? shotPrompt(p, seq, shot, { forStill: true });
-    const r = engine === 'grok' ? await grokStill(projectId, text, 'storyboard', ctx) : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect);
+    const sk = sketchId ? shot.sketches?.find((x) => x.id === sketchId) : undefined;
+    if (sketchId && !sk?.image) throw Error('that sketch has no saved picture; save the sketch first');
+    const base = prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true });
+    const text = sk ? sketchPrompt(base, sk, follow) : base;
+    const r = engine === 'grok'
+      ? await grokStill(projectId, text, 'storyboard', ctx)
+      : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, sk?.image ? [sk.image] : []);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
-      const fr = { id: uid('f'), file: r.file, prompt: text, engine, seed: r.seed, at: now() };
+      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : engine, seed: r.seed, at: now(), sketchId: sk?.id };
       s.storyboard.unshift(fr);
       s.selectedFrame = fr.id;
     });
@@ -284,16 +290,18 @@ export function resolveTakeInputs(p: Project, shot: Shot, opts: any = {}) {
   const prev = previousShot(p, shot.id);
   const prevTake = prev?.takes.find((t) => t.id === prev.selectedTake && t.status === 'done');
   const frame = shot.storyboard.find((f) => f.id === shot.selectedFrame) ?? shot.storyboard[0];
+  const cohesive = cohesionOn(p.render);
   let start: string | undefined;
   let startWhy = 'none';
   if (opts.start === 'none') { start = undefined; }
   else if (opts.start === 'frame') { start = frame?.file; startWhy = 'storyboard frame'; }
-  else if (seq.continuity.chain && shot.chainFromPrevious && prevTake?.lastFrame) { start = prevTake.lastFrame; startWhy = `last frame of ${prev!.title}`; }
+  else if (cohesive && seq.continuity.chain && shot.chainFromPrevious && prevTake?.lastFrame) { start = prevTake.lastFrame; startWhy = `last frame of ${prev!.title}`; }
   else if (frame) { start = frame.file; startWhy = 'storyboard frame'; }
   const lookId = shot.lookId ?? seq.continuity.lookId;
   const look = p.looks.find((l) => l.id === lookId)?.image;
   const castIds = [...new Set([...shot.castIds])];
-  const sheets = castIds.map((id) => p.cast.find((c) => c.id === id)?.sheet).filter(Boolean) as string[];
+  // sheets ride along on every take when the film needs cohesion; otherwise only locked ones
+  const sheets = castIds.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.sheet && (cohesive || c.locked)).map((c) => c!.sheet!) as string[];
   const guide = opts.guide === false ? undefined : shot.greybox?.video;
   const end = opts.endFrame as string | undefined;
   return { start, startWhy: start ? startWhy : 'none', look, sheets, guide, end };
@@ -331,6 +339,7 @@ export function applyStoryPlan(p: Project, plan: any, replace: boolean) {
       const castIds = (s.cast ?? []).map((n: string) => byName.get(String(n).toLowerCase())?.id).filter(Boolean) as string[];
       castIds.forEach((id) => ids.add(id));
       return newShot({
+        ...shotDefaults(p),
         title: String(s.title ?? 'Shot'), action: String(s.action ?? ''), prompt: String(s.prompt ?? ''),
         duration: Math.min(15, Math.max(4, Number(s.duration) || 6)),
         camera: { preset: CAMERA_PRESETS[s.camera] ? s.camera : 'medium', move: s.move ? String(s.move) : undefined },

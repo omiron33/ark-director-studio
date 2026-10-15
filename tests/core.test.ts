@@ -4,10 +4,13 @@ import { applyOps } from '../server/ops.ts';
 import { h3Len, h3Graph } from '../server/workflows.ts';
 import { extractJson } from '../server/agents.ts';
 import { applyStoryPlan, resolveTakeInputs } from '../server/jobs.ts';
+import { imageGraph } from '../server/workflows.ts';
+import { sketchPrompt } from '../server/prompts.ts';
+import { renderFromFilm, ARK_STAGES } from '../server/ark.ts';
 import { newSequence, newShot } from '../server/store.ts';
-import type { Project } from '../shared/types.ts';
+import { withRender, cohesionOn, videoTypeOf, type Project } from '../shared/types.ts';
 
-const project = (): Project => ({ id: 'test', title: 'T', kind: 'live', fps: 24, aspect: '16:9', style: '', script: '', cast: [], looks: [], sequences: [], created: '', updated: '' });
+const project = (): Project => ({ id: 'test', title: 'T', kind: 'live', fps: 24, aspect: '16:9', style: '', script: '', cast: [], looks: [], sequences: [], render: withRender({ look: 'live' }), created: '', updated: '' });
 
 test('ops address array elements by id', () => {
   const p = project();
@@ -70,4 +73,48 @@ test('a story plan becomes cast, sequences and shots, and takes chain from the p
   assert.equal(resolveTakeInputs(p, q.shots[1]).start, 'a-last.png');
   q.continuity.chain = false;
   assert.equal(resolveTakeInputs(p, q.shots[1]).start, 'frame.png');
+});
+
+test('pure code films relax cohesion: no chaining, only locked sheets', () => {
+  const p = project();
+  p.render = withRender({ look: 'code', tier: 'ultra' });
+  assert.equal(cohesionOn(p.render), false);
+  assert.equal(cohesionOn(withRender({ look: 'code', cohesion: 'on' })), true);
+  assert.equal(cohesionOn(withRender({ look: 'photoreal' })), true);
+  const q = newSequence('A');
+  p.cast.push({ id: 'c1', name: 'M', description: '', sheet: 'm.png' });
+  q.shots.push(newShot({ title: 'one' }), newShot({ title: 'two', castIds: ['c1'] }));
+  p.sequences.push(q);
+  q.shots[0].takes.push({ id: 't1', status: 'done', engine: 'h3', file: 'a.mp4', lastFrame: 'a-last.png', prompt: '', params: {}, at: '' });
+  q.shots[0].selectedTake = 't1';
+  const r = resolveTakeInputs(p, q.shots[1]);
+  assert.equal(r.start, undefined);
+  assert.deepEqual(r.sheets, []);
+  p.cast[0].locked = true;
+  assert.deepEqual(resolveTakeInputs(p, q.shots[1]).sheets, ['m.png']);
+  assert.equal(videoTypeOf('song', p.render), 'ultra-code');
+});
+
+test('every video type reaches the engine as flags', () => {
+  const r = withRender({ look: 'photoreal', tier: 'premium', resolution: '3840x2160', photoreal: { chain: 'continuum', styleRef: 'code', tuck: false, keep: 6, steps: 24, proxyBlur: 1.5 } as any });
+  assert.deepEqual(ARK_STAGES.film.args('S', { r }), ['photoreal/film.mjs', '--song', 'S', '--tier', 'premium', '--res', '3840x2160']);
+  assert.deepEqual(ARK_STAGES.photoreal.args('S', { r, only: '07' }), ['photoreal/photorealistic.mjs', '--song', 'S', '--only', '07', '--chain', 'continuum', '--look', 'code', '--keep', '6', '--steps', '24', '--no-tuck', '--proxy-blur', '1.5']);
+  assert.deepEqual(ARK_STAGES.musicvideo.args('S', { r: withRender({ look: 'mixed', popcam: false }) }), ['photoreal/musicvideo.mjs', '--song', 'S', '--tier', 'ultra', '--no-popcam']);
+  const f = renderFromFilm({ mode: 'musicvideo', tier: 'fast', scenes: [{ id: '01', source: 'h3' }] });
+  assert.equal(f.look, 'mixed');
+  assert.equal(f.tier, 'fast');
+  assert.equal(renderFromFilm({ scenes: [{ id: '01', scene: 'ridge' }] }).look, 'code');
+});
+
+test('a sketch rides into Qwen-Image as a reference image', () => {
+  const g: any = imageGraph({ prompt: 'p', seed: 1, prefix: 'x', refs: ['sketch.png'] });
+  assert.equal(g[20].inputs.image, 'sketch.png');
+  assert.deepEqual(g[4].inputs['images.image_1'], ['20', 0]);
+  assert.deepEqual(g[4].inputs.vae, ['3', 0]);
+  const plain: any = imageGraph({ prompt: 'p', seed: 1, prefix: 'x' });
+  assert.equal(plain[4].inputs.vae, undefined);
+  const text = sketchPrompt('Martha at the tomb.', { id: 'k', shapes: [], note: 'left is Martha', at: '' }, 'exact');
+  assert.match(text, /stick figures are people/);
+  assert.match(text, /left is Martha/);
+  assert.match(text, /Martha at the tomb\./);
 });

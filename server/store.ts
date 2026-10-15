@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.ts';
-import type { Project, Sequence, Shot, FilmKind } from '../shared/types.ts';
+import { VIDEO_TYPES, withRender, cohesionOn, type Project, type Sequence, type Shot, type FilmKind, type RenderSetup } from '../shared/types.ts';
 
 export const uid = (prefix = '') => prefix + crypto.randomBytes(5).toString('hex');
 export const now = () => new Date().toISOString();
@@ -36,7 +36,10 @@ export function listProjects(): Project[] {
 }
 
 export function readProject(id: string): Project {
-  return JSON.parse(fs.readFileSync(path.join(projectDir(id), 'project.json'), 'utf8'));
+  const p: Project = JSON.parse(fs.readFileSync(path.join(projectDir(id), 'project.json'), 'utf8'));
+  // films made before video types existed: live action stays live, everything else reads as code
+  p.render = withRender(p.render ?? (p.kind === 'live' ? { look: 'live' } : {}));
+  return p;
 }
 
 // Writes are serialised per project and atomic (write a temp file, then rename).
@@ -65,12 +68,14 @@ export function writeProject(p: Project) {
   fs.renameSync(tmp, file);
 }
 
-export function createProject({ title, kind, script = '', style = '' }: { title: string; kind: FilmKind; script?: string; style?: string }): Project {
+export function createProject({ title, kind, script = '', style = '', videoType, render }: { title: string; kind: FilmKind; script?: string; style?: string; videoType?: string; render?: Partial<RenderSetup> }): Project {
+  const vt = VIDEO_TYPES.find((v) => v.id === videoType);
+  if (vt) kind = vt.kind;
   let id = slug(title);
   for (let i = 2; fs.existsSync(projectDir(id)); i++) id = `${slug(title)}-${i}`;
   const p: Project = {
     id, title, kind, fps: 24, aspect: '16:9', style, script,
-    cast: [], looks: [], sequences: [], created: now(), updated: now(),
+    cast: [], looks: [], sequences: [], render: withRender({ ...(vt?.render ?? (kind === 'live' ? { look: 'live' } : {})), ...(render ?? {}) }), created: now(), updated: now(),
   };
   writeProject(p);
   return p;
@@ -86,6 +91,12 @@ export function deleteProject(id: string) {
 export function newSequence(title = 'New sequence'): Sequence {
   return { id: uid('q'), title, summary: '', continuity: { plan: '', castIds: [], chain: true }, shots: [] };
 }
+
+// A new shot in this film: generated looks chain from the previous shot, pure code does not.
+export const shotDefaults = (p: Project): Partial<Shot> => {
+  const r = withRender(p.render);
+  return { source: r.look === 'code' ? 'code' : 'h3', chainFromPrevious: cohesionOn(r) };
+};
 
 export function newShot(partial: Partial<Shot> = {}): Shot {
   return {

@@ -320,3 +320,49 @@ pre.err { white-space: pre-wrap; background: rgba(255, 107, 94, 0.08); border: 1
 .pipeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .pipeline li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
 .pipeline .num { font-size: 15px; width: 24px; }
+
+/* ---------- video types ---------- */
+.vt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.vt-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.vt { text-align: left; border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.vt b { font-weight: 600; font-size: 13px; }
+.vt span { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.vt:hover { border-color: var(--line-2); background: var(--raise); }
+.vt.on { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); background: rgba(255, 181, 71, 0.08); }
+.vt.on b { color: var(--amber); }
+.pill { font-size: 11.5px; padding: 2px 9px; border-radius: 10px; border: 1px solid var(--line-2); white-space: nowrap; }
+.pill-amber { color: var(--amber); border-color: rgba(255, 181, 71, 0.45); }
+.pill-cyan { color: var(--cyan); border-color: rgba(94, 234, 212, 0.4); }
+
+/* ---------- sketch ---------- */
+.toolbar { display: flex; align-items: center; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.tool { width: 32px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); cursor: pointer; }
+.tool:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+.tool.on { background: var(--raise); color: var(--amber); box-shadow: 0 0 0 1px var(--line-2); }
+.tool:disabled { opacity: 0.3; cursor: default; }
+.toolbar .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.sketch-stage { height: 100%; display: grid; place-items: center; padding: 14px; container-type: size; background: #0a0908; border-radius: 0 0 var(--radius) var(--radius); overflow: hidden; }
+.paper-wrap { position: relative; background: #fbfaf7; border-radius: 4px; box-shadow: 0 20px 50px -20px #000, 0 0 0 1px #2b2722; }
+.paper-wrap .trace { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.28; pointer-events: none; border-radius: 4px; }
+.paper-svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.paper-svg.tool-select { cursor: default; }
+.paper-svg.tool-text { cursor: text; }
+.paper-svg .thirds line { stroke: #d9d3c7; stroke-width: 2; stroke-dasharray: 10 10; }
+.paper-svg .shape { stroke: #111; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.paper-svg .shape text { fill: #111; stroke: none; font-family: var(--body); font-weight: 600; }
+.paper-svg .shape.sel { stroke: var(--amber-2); }
+.paper-svg .shape.sel text { fill: var(--amber-2); }
+.paper-svg .handle { fill: #fff; stroke: var(--amber-2); stroke-width: 4; cursor: move; }
+.paper-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); color: #8a8276; font-size: 14px; pointer-events: none; white-space: nowrap; }
+img.paper { background: #fbfaf7; }
+.sketch-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sketch-item { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+.sketch-item.on { border-color: var(--amber); }
+.sketch-item img, .sketch-item .ph { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 4px; }
+.sketch-item .icon-btn { position: absolute; top: 6px; right: 6px; }
+.frame-pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.fp { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel-2); }
+.fp.on { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.fp img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; cursor: pointer; }
+.fp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 7px; }
+.fp-row .take-chosen { position: static; }

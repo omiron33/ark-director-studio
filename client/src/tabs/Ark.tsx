@@ -1,25 +1,26 @@
 import { useEffect, useState } from 'react';
 import { Ship, Download, Upload, Play, ScrollText } from 'lucide-react';
-import { api } from '../api';
+import { api, type Stage } from '../api';
+import { RenderCard } from '../render';
+import { withRender } from '../../../shared/types';
 import { useStudio, useSelection, fmtTime } from '../store';
-import { Card, Btn, Empty, Expert, Field, Segmented, Select, Cols, Col } from '../ui';
+import { Card, Btn, Empty, Expert, Field, Select, Cols, Col } from '../ui';
 import { JobList } from './Queue';
 
-const BASIC_PIPELINE = ['storyboard-draft', 'draft', 'stills', 'photoreal', 'final-check', 'critic-film'];
 
 export function Ark() {
   const { project: p, shot } = useSelection();
   const { run, jobs, mode, status } = useStudio();
-  const [stages, setStages] = useState<Record<string, { label: string; expert: boolean; gpu: boolean }>>({});
+  const [stages, setStages] = useState<Record<string, Stage>>({});
   const [only, setOnly] = useState('');
-  const [chain, setChain] = useState<'bridges' | 'continuum'>('bridges');
-  const [local, setLocal] = useState(false);
   const [critic, setCritic] = useState('claude');
   useEffect(() => { api.stages().then(setStages).catch(() => {}); }, []);
   if (!p) return null;
   const arkJobs = jobs.filter((j) => j.projectId === p.id && j.kind === 'ark');
-  const keys = mode === 'basic' ? BASIC_PIPELINE.filter((k) => stages[k]) : Object.keys(stages);
-  const stage = (k: string) => run(() => api.post(p.id, 'ark/stage', { stage: k, opts: { only: only || undefined, chain, local, agent: critic }, shotId: k === 'photoreal' && only && shot?.arkScene === only ? shot.id : undefined }), `${stages[k]?.label} started`);
+  const r = withRender(p.render);
+  // the film's own pipeline for its video type; Expert adds the extra checks and the tier estimate
+  const keys = Object.keys(stages).filter((k) => stages[k].looks.includes(r.look === 'live' ? 'photoreal' : r.look) && (!stages[k].kinds || stages[k].kinds!.includes(p.kind)) && (mode === 'expert' || !stages[k].expert));
+  const stage = (k: string) => run(() => api.post(p.id, 'ark/stage', { stage: k, opts: { only: only || undefined, agent: critic }, shotId: k === 'photoreal' && only && shot?.arkScene === only ? shot.id : undefined }), `${stages[k]?.label} started`);
 
   return (
     <Cols className="g-ark">
@@ -34,7 +35,7 @@ export function Ark() {
             <p className="muted small">Pulled {fmtTime(p.ark.lastPull) || 'never'} · pushed {fmtTime(p.ark.lastPush) || 'never'}</p>
             <div className="form-row">
               <Btn onClick={() => run(() => api.post(p.id, 'ark/pull', {}), 'Pulled film.json')}><Download size={14} />Pull film.json</Btn>
-              <Btn kind="solid" onClick={() => confirm('Write the scene and take prompts back into film.json? The old file is kept as film.json.studio-bak.') && run(async () => { const r = await api.post<{ changed: number }>(p.id, 'ark/push', {}); return r; }, 'Prompts written to film.json')}><Upload size={14} />Push prompts</Btn>
+              <Btn kind="solid" onClick={() => confirm('Write the scene and take prompts, the tier and the resolution back into film.json? The old file is kept as film.json.studio-bak.') && run(async () => { const r = await api.post<{ changed: number }>(p.id, 'ark/push', {}); return r; }, 'Prompts written to film.json')}><Upload size={14} />Push prompts</Btn>
             </div>
             <p className="muted small">Pull keeps every storyboard frame and take made here. Push writes only scene prompts and take continuity plans.</p>
           </div>
@@ -47,10 +48,8 @@ export function Ark() {
             <Expert>
               <div className="form-row">
                 <Field label="Only scenes" hint="e.g. 07 or 03,04"><input value={only} onChange={(e) => setOnly(e.target.value)} placeholder={shot?.arkScene ?? 'all'} /></Field>
-                <Field label="Long takes"><Segmented value={chain} onChange={setChain} options={[['bridges', 'Bridges'], ['continuum', 'Continuum (trial)']]} /></Field>
                 <Field label="Critic"><Select value={critic} onChange={setCritic} options={[['claude', 'Claude'], ['codex', 'Codex']]} /></Field>
               </div>
-              <label className="check"><input type="checkbox" checked={local} onChange={(e) => setLocal(e.target.checked)} />Render code scenes on the Mac only (--local, keeps them off OmiPC)</label>
             </Expert>
             <ol className="pipeline">
               {keys.map((k, i) => (
@@ -68,6 +67,7 @@ export function Ark() {
       </Col>
 
       <Col w={1.3}>
+      <RenderCard p={p} grow={0.9} />
 
       <Card area="log" id="ark-log" title="Engine runs" icon={<ScrollText size={15} />}>
         {arkJobs.length ? (

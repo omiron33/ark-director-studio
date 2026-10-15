@@ -1,6 +1,7 @@
 // The GPU queue dashboard: one GPU job at a time on this machine.
 // Announce a job as queued, poll /claim until it is granted, report progress, end it.
 // Its control state (run / pause / stop) is honoured before anything is announced.
+import os from 'node:os';
 import { config } from './config.ts';
 
 const post = async (url: string, body: unknown, timeout = 30000) => {
@@ -35,7 +36,7 @@ export async function claimGpu(opts: { tool: string; description: string; projec
   const control = c.control ?? c.state;
   if (control !== 'run') throw Error(`the GPU dashboard is set to ${control}; not starting`);
   const { id } = await post(`${dash}/api/renders/start`, {
-    agent: 'Ark Director Studio', origin_machine: 'omipc', tool: opts.tool, description: opts.description,
+    agent: 'Ark Director Studio', origin_machine: os.hostname().toLowerCase(), tool: opts.tool, description: opts.description,
     project: opts.project ?? 'ark-director-studio', expected_minutes: opts.expectMinutes ?? 10, queue: true,
   });
   if (!id) throw Error('the GPU dashboard did not accept the job');

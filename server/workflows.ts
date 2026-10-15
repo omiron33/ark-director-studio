@@ -101,17 +101,20 @@ export function h3Graph(p: H3Params) {
 }
 
 // Stills (storyboard frames, character sheets, looks): Qwen-Image 2.1, as the engine's image command uses.
-export function imageGraph({ prompt, negative = 'text, watermark, logo, blurry, deformed, extra fingers', seed, width = 1344, height = 768, steps = 20, prefix }: { prompt: string; negative?: string; seed: number; width?: number; height?: number; steps?: number; prefix: string }) {
-  return {
+// `refs` are uploaded images the text encoder sees (a hand sketch to follow, for one).
+export function imageGraph({ prompt, negative = 'text, watermark, logo, blurry, deformed, extra fingers', seed, width = 1344, height = 768, steps = 20, prefix, refs = [] }: { prompt: string; negative?: string; seed: number; width?: number; height?: number; steps?: number; prefix: string; refs?: string[] }) {
+  const g: Record<string, any> = {
     1: { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1_int8_convrot.safetensors', weight_dtype: 'default' } },
     2: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_8b_w4a8_heretic.safetensors', type: 'qwen_image', device: 'default' } },
     3: { class_type: 'VAELoader', inputs: { vae_name: 'qwen_image_2.1_vae_bf16.safetensors' } },
-    4: { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['2', 0], prompt, negative_prompt: negative, resolution: 1024 } },
+    4: { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['2', 0], prompt, negative_prompt: negative, resolution: 1024, ...(refs.length ? { vae: ['3', 0] } : {}), ...Object.fromEntries(refs.map((_, i) => [`images.image_${i + 1}`, [String(20 + i), 0]])) } },
     6: { class_type: 'EmptyLatentImage', inputs: { width, height, batch_size: 1 } },
     7: { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['4', 0], negative: ['4', 1], latent_image: ['6', 0], seed, steps, cfg: 1.0, sampler_name: 'euler', scheduler: 'simple', denoise: 1.0 } },
     8: { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
     9: { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: prefix } },
   };
+  refs.forEach((r, i) => { g[20 + i] = { class_type: 'LoadImage', inputs: { image: r } }; });
+  return g;
 }
 
 export const ASPECTS: Record<string, [number, number]> = {

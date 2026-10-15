@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Plus, Ship, Trash2, RefreshCw, Film } from 'lucide-react';
 import { api, media, type ProjectSummary, type Song } from '../api';
 import { useStudio, fmtTime } from '../store';
-import { Card, Btn, Field, Select, Empty, Expert, Cols, Col } from '../ui';
+import { Card, Btn, Field, Empty, Expert, Cols, Col } from '../ui';
+import { VideoTypePicker } from '../render';
+import { VIDEO_TYPES } from '../../../shared/types';
 
-const KINDS: [string, string][] = [['live', 'Live-action film'], ['story', 'Narrated story'], ['song', 'Song lyric film'], ['musicvideo', 'Music video']];
 
 export function Projects() {
   const { open, setTab, run, projectId } = useStudio();
@@ -12,7 +13,7 @@ export function Projects() {
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [songErr, setSongErr] = useState('');
   const [title, setTitle] = useState('');
-  const [kind, setKind] = useState('live');
+  const [videoType, setVideoType] = useState('ultra-code');
   const [script, setScript] = useState('');
   const load = () => api.projects().then(setList).catch(() => {});
   const loadSongs = () => { setSongErr(''); api.songs().then(setSongs).catch((e) => { setSongs([]); setSongErr(e.message); }); };
@@ -20,7 +21,8 @@ export function Projects() {
 
   const create = async () => {
     if (!title.trim()) return;
-    const p = await run(() => api.create({ title: title.trim(), kind, script }), 'Film created');
+    const kind = VIDEO_TYPES.find((v) => v.id === videoType)?.kind ?? 'song';
+    const p = await run(() => api.create({ title: title.trim(), kind, videoType, script }), 'Film created');
     if (p) { await open(p.id); setTab('story'); }
   };
   const importSong = async (s: Song) => {
@@ -59,8 +61,8 @@ export function Projects() {
       <Card area="new" id="new" title="New film" icon={<Plus size={15} />}>
         <div className="form">
           <Field label="Title"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lazarus, come forth" onKeyDown={(e) => e.key === 'Enter' && create()} /></Field>
-          <Field label="Kind"><Select value={kind} onChange={setKind} options={KINDS} /></Field>
-          <Field label="Story, script or lyrics" hint="optional, you can paste it later"><textarea rows={10} value={script} onChange={(e) => setScript(e.target.value)} /></Field>
+          <Field label="Video type"><VideoTypePicker value={videoType} onPick={setVideoType} /></Field>
+          <Field label="Story, script or lyrics" hint="optional, you can paste it later"><textarea rows={5} value={script} onChange={(e) => setScript(e.target.value)} /></Field>
           <Btn kind="primary" onClick={create} disabled={!title.trim()}><Plus size={14} />Create film</Btn>
         </div>
       </Card>

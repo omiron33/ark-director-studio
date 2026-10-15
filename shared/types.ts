@@ -6,6 +6,79 @@ export type FilmKind = 'song' | 'story' | 'musicvideo' | 'live';
 export type ShotSource = 'code' | 'h3' | 'grok' | 'still';
 export type Mode = 'basic' | 'expert';
 
+// How a film is made: every video type the Ark engine has. The kind (song, story, music video, live
+// action) says what the film is; the render setup says how its pictures are made.
+//   code       pure code at a render tier (fast, standard, premium, ultra). Every frame is a function of
+//              song time, so shots do not drift: shot cohesion matters less and is relaxed by default.
+//   photoreal  the photorealistic setting: each code scene steers MiniMax H3 for its first steps and the
+//              in-scene words stay code. Generated, so cohesion (sheets, chaining, one plan) is on.
+//   mixed      the music-video setting: code shots cut with generated H3 shots.
+//   live       live action: H3 from prompts, looks, character sheets and Blender greyboxes.
+export type RenderLook = 'code' | 'photoreal' | 'mixed' | 'live';
+export type Tier = 'fast' | 'standard' | 'premium' | 'ultra';
+export interface RenderSetup {
+  look: RenderLook;
+  tier: Tier;                        // the code tier (ultra is the engine default since 2026-10-07)
+  resolution: '1920x1080' | '3840x2160';
+  words: 'in-scene' | 'overlay' | 'none'; // lyrics drawn in the world (default), a lyric layer over the picture, or none
+  cohesion: 'auto' | 'on' | 'off';   // auto: on for generated looks, off for pure code
+  photoreal: {
+    chain: 'bridges' | 'continuum';  // long takes: first+last-frame bridges (default) or Continuum (trial, opt-in)
+    styleRef: 'none' | 'code' | 'image'; // --look: prompt only, the scene's first code frame, or the look image
+    tuck: boolean;                   // words tuck behind nearer things H3 paints
+    keep: number;                    // steps steered by the code render or greybox
+    steps: number;
+    proxyBlur: number;
+  };
+  popcam: boolean;                   // music video: the pop-video camera that plays the track
+  local: boolean;                    // --local: code scenes render on the Mac only
+}
+
+export const DEFAULT_RENDER: RenderSetup = {
+  look: 'code', tier: 'ultra', resolution: '1920x1080', words: 'in-scene', cohesion: 'auto',
+  photoreal: { chain: 'bridges', styleRef: 'none', tuck: true, keep: 5, steps: 20, proxyBlur: 0 },
+  popcam: true, local: false,
+};
+
+// One-click video types for Basic mode. Each sets the kind and the render setup together.
+export const VIDEO_TYPES: { id: string; label: string; blurb: string; kind: FilmKind; render: Partial<RenderSetup> }[] = [
+  { id: 'ultra-code', label: 'Ultra code lyric film', blurb: 'Pure code at the ultra tier, words drawn in the world. The engine default.', kind: 'song', render: { look: 'code', tier: 'ultra', words: 'in-scene' } },
+  { id: 'premium-code', label: 'Premium code lyric film', blurb: 'Pure code at 60 fps premium, quicker than ultra.', kind: 'song', render: { look: 'code', tier: 'premium', words: 'in-scene' } },
+  { id: 'fast-code', label: 'Fast code preview', blurb: 'A quick 30 fps look at the whole film, no review gates.', kind: 'song', render: { look: 'code', tier: 'fast', words: 'in-scene' } },
+  { id: 'photoreal', label: 'Photoreal lyric film', blurb: 'Code scenes repainted by H3 as live action, words stay code.', kind: 'song', render: { look: 'photoreal', tier: 'ultra', words: 'in-scene' } },
+  { id: 'musicvideo', label: 'Music video', blurb: 'Generated H3 shots cut with code shots, pop camera on the beat.', kind: 'musicvideo', render: { look: 'mixed', tier: 'ultra', words: 'in-scene', popcam: true } },
+  { id: 'story-code', label: 'Narrated story, code', blurb: 'A narrated Bible story drawn in code at the ultra tier.', kind: 'story', render: { look: 'code', tier: 'ultra', words: 'none' } },
+  { id: 'story-photoreal', label: 'Narrated story, photoreal', blurb: 'A narrated story with code scenes repainted as live action.', kind: 'story', render: { look: 'photoreal', tier: 'ultra', words: 'none' } },
+  { id: 'live', label: 'Live-action film', blurb: 'H3 shots from prompts, character sheets and Blender greyboxes.', kind: 'live', render: { look: 'live', words: 'none' } },
+];
+
+export const withRender = (r?: Partial<RenderSetup>): RenderSetup => ({ ...DEFAULT_RENDER, ...(r ?? {}), photoreal: { ...DEFAULT_RENDER.photoreal, ...(r?.photoreal ?? {}) } });
+// Shot cohesion (character sheets on every take, one continuity plan, chaining from the last frame)
+// is what generated pictures need. Pure code films keep it off unless asked.
+export const cohesionOn = (r?: Partial<RenderSetup>) => { const x = withRender(r); return x.cohesion === 'on' || (x.cohesion === 'auto' && x.look !== 'code'); };
+export const videoTypeOf = (kind: FilmKind, r?: Partial<RenderSetup>) => {
+  const x = withRender(r);
+  return VIDEO_TYPES.find((v) => v.kind === kind && v.render.look === x.look && (v.render.tier === undefined || v.render.tier === x.tier || x.look === 'live'))?.id;
+};
+
+// A hand sketch: stick figures drawn with lines, boxes and circles, kept as shapes so it stays editable.
+export type SketchTool = 'line' | 'box' | 'circle' | 'figure' | 'arrow' | 'text';
+export interface SketchShape {
+  id: string;
+  tool: SketchTool;
+  x1: number; y1: number; x2: number; y2: number; // in a 1600x900 canvas (any aspect is scaled into it)
+  text?: string;
+  color?: string;
+  width?: number;
+}
+export interface Sketch {
+  id: string;
+  shapes: SketchShape[];
+  image?: string;           // media path of the rendered PNG the model sees
+  note?: string;            // what the drawing means, in words, added to the prompt
+  at: string;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -40,7 +113,7 @@ export interface Greybox {
   still?: string;
 }
 
-export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string }
+export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string }
 
 export type TakeStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface Take {
@@ -77,6 +150,7 @@ export interface Shot {
   greybox?: Greybox;
   storyboard: StoryboardFrame[];
   selectedFrame?: string;
+  sketches?: Sketch[];      // hand-drawn stick-figure layouts, newest first
   takes: Take[];
   selectedTake?: string;
   chainFromPrevious: boolean; // start this take from the previous shot's last frame
@@ -120,6 +194,7 @@ export interface Project {
   looks: Look[];
   sequences: Sequence[];
   ark?: ArkLink;
+  render?: RenderSetup;     // missing on older films: read it with withRender()
   created: string;
   updated: string;
 }

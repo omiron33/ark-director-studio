@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
-import { Clapperboard, FileText, LayoutGrid, Film, Users, Box, Rows3, ListChecks, Ship, Settings as Cog, FolderOpen } from 'lucide-react';
+import { Clapperboard, FileText, LayoutGrid, Film, Users, Box, Rows3, ListChecks, Ship, Settings as Cog, FolderOpen, PenTool } from 'lucide-react';
 import { useStudio, connectLive, type Tab } from './store';
 import { Dot, Segmented } from './ui';
+import { VIDEO_TYPES, videoTypeOf } from '../../shared/types';
 import { Projects } from './tabs/Projects';
 import { Story } from './tabs/Story';
 import { Storyboard } from './tabs/Storyboard';
 import { ShotTab } from './tabs/Shot';
+import { SketchTab } from './tabs/Sketch';
 import { Cast } from './tabs/Cast';
 import { GreyboxTab } from './tabs/Greybox';
 import { Timeline } from './tabs/Timeline';
@@ -18,6 +20,7 @@ const TABS: { id: Tab; label: string; icon: any; needsProject?: boolean }[] = [
   { id: 'story', label: 'Story', icon: FileText, needsProject: true },
   { id: 'storyboard', label: 'Storyboard', icon: LayoutGrid, needsProject: true },
   { id: 'shot', label: 'Shot', icon: Film, needsProject: true },
+  { id: 'sketch', label: 'Sketch', icon: PenTool, needsProject: true },
   { id: 'cast', label: 'Cast & looks', icon: Users, needsProject: true },
   { id: 'greybox', label: 'Greybox', icon: Box, needsProject: true },
   { id: 'timeline', label: 'Timeline', icon: Rows3, needsProject: true },
@@ -39,7 +42,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input, textarea, select')) return;
-      const i = Number(e.key);
+      const i = e.key === '0' ? 10 : Number(e.key);
       if (e.altKey && i >= 1 && i <= TABS.length) { setTab(TABS[i - 1].id); e.preventDefault(); }
     };
     window.addEventListener('keydown', onKey);
@@ -54,7 +57,7 @@ export function App() {
       <header className="topbar">
         <div className="brand"><Clapperboard size={20} /><span>ARK</span><b>DIRECTOR</b></div>
         <div className="film-name" title={project?.ark?.songPath}>
-          {project ? <><span className="slate">{project.kind}</span>{project.title}</> : <span className="muted">No film open</span>}
+          {project ? <><span className="slate">{VIDEO_TYPES.find((v) => v.id === videoTypeOf(project.kind, project.render))?.label ?? project.kind}</span>{project.title}</> : <span className="muted">No film open</span>}
         </div>
         <nav className="tabs">
           {TABS.map((t, i) => (
@@ -77,6 +80,7 @@ export function App() {
         {view === 'story' && <Story />}
         {view === 'storyboard' && <Storyboard />}
         {view === 'shot' && <ShotTab />}
+        {view === 'sketch' && <SketchTab />}
         {view === 'cast' && <Cast />}
         {view === 'greybox' && <GreyboxTab />}
         {view === 'timeline' && <Timeline />}

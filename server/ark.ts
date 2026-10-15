@@ -6,7 +6,7 @@ import path from 'node:path';
 import { config } from './config.ts';
 import { exec } from './media.ts';
 import { newSequence, newShot, uid, now, saveMedia } from './store.ts';
-import type { Project, Shot } from '../shared/types.ts';
+import { withRender, type Project, type Shot, type RenderSetup } from '../shared/types.ts';
 
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 const sshArgs = (machine: string) => ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', machine];
@@ -56,6 +56,7 @@ export async function importSong(p: Project, songPath: string, { withAudio = tru
   p.style = pr.style ?? p.style;
   p.kind = film.mode === 'musicvideo' ? 'musicvideo' : film.mode === 'story' ? 'story' : 'song';
   p.ark = { machine: config.ark.machine, songPath, lastPull: now() };
+  p.render = renderFromFilm(film, p.render);
 
   const toShot = (sc: any): Shot => newShot({
     title: sc.title ?? `Scene ${sc.id}`,
@@ -106,6 +107,20 @@ export async function importSong(p: Project, songPath: string, { withAudio = tru
   }
   return p;
 }
+// The film's video type, read from film.json: mode, tier, resolution and whether scenes are repainted by H3.
+export function renderFromFilm(film: any, prev?: Partial<RenderSetup>): RenderSetup {
+  const r = withRender(prev);
+  const scenes: any[] = film.scenes ?? [];
+  const painted = scenes.some((s) => s.photorealistic || s.source === 'h3');
+  r.look = film.mode === 'musicvideo' ? 'mixed' : painted ? 'photoreal' : 'code';
+  if (['fast', 'standard', 'premium', 'ultra'].includes(film.tier)) r.tier = film.tier;
+  if (film.resolution === '3840x2160') r.resolution = '3840x2160';
+  if (film.photorealistic?.tuck === false) r.photoreal.tuck = false;
+  if (film.popcam === false) r.popcam = false;
+  r.words = film.mode === 'story' ? 'none' : scenes.some((s) => s.overlay) ? 'overlay' : 'in-scene';
+  return r;
+}
+
 const mediaRoot = (id: string) => path.join(config.dataDir, 'projects', id, 'media');
 
 // Write the prompts the studio owns back into film.json. The previous file is kept as film.json.studio-bak.
@@ -124,6 +139,10 @@ export async function pushPrompts(p: Project) {
     const t = (film.photorealistic?.takes ?? []).find((x: any) => x.id === seq.title);
     if (t && seq.continuity.plan.trim() && t.prompt !== seq.continuity.plan.trim()) { t.prompt = seq.continuity.plan.trim(); changed++; }
   }
+  // the video type the studio owns: tier and resolution (both change what the next render makes)
+  const rs = withRender(p.render);
+  if (film.tier !== rs.tier) { film.tier = rs.tier; changed++; }
+  if ((film.resolution ?? '1920x1080') !== rs.resolution) { if (rs.resolution === '1920x1080') delete film.resolution; else film.resolution = rs.resolution; changed++; }
   const file = path.posix.join(p.ark.songPath, 'film.json');
   const r = await remote(`cp ${q(file)} ${q(file + '.studio-bak')} && cat > ${q(file + '.tmp')} && mv ${q(file + '.tmp')} ${q(file)}`, { input: JSON.stringify(film, null, 1) + '\n' });
   if (r.code !== 0) throw Error(`writing film.json failed: ${r.err.trim()}`);
@@ -132,24 +151,40 @@ export async function pushPrompts(p: Project) {
 }
 
 // The engine's own commands, by name. Each runs in the engine folder with --song pointing at the song.
-export const ARK_STAGES: Record<string, { label: string; args: (song: string, o: any) => string[]; gpu?: boolean; expert?: boolean }> = {
-  'storyboard-draft': { label: 'Draft the storyboard', args: (s) => ['photoreal/storyboard.mjs', 'draft', '--song', s] },
-  'storyboard-check': { label: 'Check the storyboard', args: (s) => ['photoreal/storyboard.mjs', 'check', '--song', s] },
-  'draft': { label: 'Code draft render', args: (s, o) => ['photoreal/film.mjs', '--song', s, '--draft', ...(o.local ? ['--local'] : [])] },
-  'check': { label: 'Pre-render check', args: (s) => ['photoreal/check.mjs', '--song', s, '--label', 'draft'] },
-  'stills': { label: 'Key stills', args: (s, o) => ['photoreal/film.mjs', '--song', s, '--stills', ...(o.local ? ['--local'] : [])] },
-  'critic-stills': { label: 'Critic on the stills', args: (s, o) => ['photoreal/critic.mjs', 'stills', '--song', s, '--agent', o.agent ?? 'claude'] },
-  'film': { label: 'Full code render', args: (s, o) => ['photoreal/film.mjs', '--song', s, ...(o.only ? ['--only', o.only] : []), ...(o.local ? ['--local'] : [])], expert: true },
-  'photoreal': { label: 'Photoreal takes (H3)', args: (s, o) => ['photoreal/photorealistic.mjs', '--song', s, ...(o.only ? ['--only', o.only] : []), '--chain', o.chain ?? 'bridges'], gpu: true },
-  'final-check': { label: 'Final check', args: (s) => ['photoreal/check.mjs', '--song', s, '--label', 'final'] },
-  'critic-film': { label: 'Critic on the film', args: (s, o) => ['photoreal/critic.mjs', 'film', '--song', s, '--agent', o.agent ?? 'claude'] },
+// `r` is the film's render setup, so every video type's flags reach the engine: the tier and resolution
+// for code renders, and chain, style reference, tuck, keep, steps and proxy blur for H3 repaints.
+type StageOpts = { only?: string; local?: boolean; agent?: string; r: RenderSetup };
+const local = (o: StageOpts) => (o.local ?? o.r.local) ? ['--local'] : [];
+const only = (o: StageOpts) => o.only ? ['--only', o.only] : [];
+const tier = (o: StageOpts) => ['--tier', o.r.tier, ...(o.r.resolution !== '1920x1080' && o.r.tier !== 'fast' ? ['--res', o.r.resolution] : [])];
+const paint = (o: StageOpts) => {
+  const pr = o.r.photoreal;
+  return ['--chain', pr.chain, '--look', pr.styleRef, '--keep', String(pr.keep), '--steps', String(pr.steps),
+    ...(pr.tuck ? [] : ['--no-tuck']), ...(pr.proxyBlur ? ['--proxy-blur', String(pr.proxyBlur)] : [])];
+};
+// looks: which video types a stage belongs to (Basic shows only the film's own pipeline)
+export const ARK_STAGES: Record<string, { label: string; args: (song: string, o: StageOpts) => string[]; gpu?: boolean; expert?: boolean; looks: string[]; kinds?: string[] }> = {
+  'story-prepare': { label: 'Align the narration and build the mix', args: (s) => ['photoreal/story.mjs', 'prepare', '--song', s], looks: ['code', 'photoreal'], kinds: ['story'] },
+  'storyboard-draft': { label: 'Draft the storyboard', args: (s) => ['photoreal/storyboard.mjs', 'draft', '--song', s], looks: ['code', 'photoreal', 'mixed'] },
+  'storyboard-check': { label: 'Check the storyboard', args: (s) => ['photoreal/storyboard.mjs', 'check', '--song', s], looks: ['code', 'photoreal', 'mixed'], expert: true },
+  'critic-storyboard': { label: 'Critic on the storyboard', args: (s, o) => ['photoreal/critic.mjs', 'storyboard', '--song', s, '--agent', o.agent ?? 'claude'], looks: ['code', 'photoreal', 'mixed'], expert: true },
+  'draft': { label: 'Code draft render', args: (s, o) => ['photoreal/film.mjs', '--song', s, '--draft', ...local(o)], looks: ['code', 'photoreal', 'mixed'] },
+  'check': { label: 'Pre-render check', args: (s) => ['photoreal/check.mjs', '--song', s, '--label', 'draft'], looks: ['code', 'photoreal', 'mixed'] },
+  'stills': { label: 'Key stills', args: (s, o) => ['photoreal/film.mjs', '--song', s, '--stills', ...tier(o), ...local(o)], looks: ['code', 'photoreal', 'mixed'] },
+  'critic-stills': { label: 'Critic on the stills', args: (s, o) => ['photoreal/critic.mjs', 'stills', '--song', s, '--agent', o.agent ?? 'claude'], looks: ['code', 'photoreal', 'mixed'] },
+  'estimate': { label: 'Estimate every tier', args: (s, o) => ['photoreal/film.mjs', '--song', s, '--estimate', ...local(o)], looks: ['code', 'photoreal', 'mixed'], expert: true },
+  'film': { label: 'Full code render at the film\'s tier', args: (s, o) => ['photoreal/film.mjs', '--song', s, ...tier(o), ...only(o), ...local(o)], looks: ['code', 'photoreal'] },
+  'photoreal': { label: 'Photoreal repaint (H3)', args: (s, o) => ['photoreal/photorealistic.mjs', '--song', s, ...only(o), ...paint(o)], gpu: true, looks: ['photoreal'] },
+  'musicvideo': { label: 'Music video: code, H3 and join', args: (s, o) => ['photoreal/musicvideo.mjs', '--song', s, '--tier', o.r.tier, ...(o.r.popcam ? [] : ['--no-popcam']), ...(o.r.photoreal.tuck ? [] : ['--no-tuck'])], gpu: true, looks: ['mixed'] },
+  'final-check': { label: 'Final check', args: (s) => ['photoreal/check.mjs', '--song', s, '--label', 'final'], looks: ['code', 'photoreal', 'mixed'] },
+  'critic-film': { label: 'Critic on the film', args: (s, o) => ['photoreal/critic.mjs', 'film', '--song', s, '--agent', o.agent ?? 'claude'], looks: ['code', 'photoreal', 'mixed'] },
 };
 
 export async function runStage(p: Project, stage: string, opts: any, { signal, onLine }: { signal?: AbortSignal; onLine?: (l: string) => void }) {
   if (!p.ark) throw Error('this project is not linked to an Ark song');
   const st = ARK_STAGES[stage];
   if (!st) throw Error(`unknown Ark stage ${stage}`);
-  const cmd = `cd ${q(config.ark.engine)} && ${q(config.ark.node)} ${st.args(p.ark.songPath, opts).map(q).join(' ')}`;
+  const cmd = `cd ${q(config.ark.engine)} && ${q(config.ark.node)} ${st.args(p.ark.songPath, { ...opts, r: withRender({ ...p.render, ...(opts.render ?? {}) }) }).map(q).join(' ')}`;
   onLine?.(`$ ${cmd}`);
   const r = await remote(cmd, { signal, onLine, timeoutMs: 24 * 3600000 });
   if (r.code !== 0) throw Error(`${st.label} exited ${r.code}: ${(r.err || r.out).trim().slice(-800)}`);

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { api, type Op } from './api';
 import type { Project, Job, StudioStatus, Mode, Shot, Sequence } from '../../shared/types';
 
-export type Tab = 'projects' | 'story' | 'storyboard' | 'shot' | 'cast' | 'greybox' | 'timeline' | 'queue' | 'ark' | 'settings';
+export type Tab = 'projects' | 'story' | 'storyboard' | 'shot' | 'sketch' | 'cast' | 'greybox' | 'timeline' | 'queue' | 'ark' | 'settings';
 
 const saved = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
 const keep = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
