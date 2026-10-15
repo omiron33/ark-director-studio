@@ -10,6 +10,7 @@ export function shotPrompt(p: Project, seq: Sequence, shot: Shot, { forStill = f
     shot.prompt.trim() || shot.action.trim(),
     cam ? `${cam.words}${shot.camera.lens || cam.lens ? `, ${shot.camera.lens || cam.lens} lens` : ''}.` : '',
     shot.camera.move && !forStill ? `Camera: ${shot.camera.move}.` : '',
+    shot.words?.trim() ? `Words in the scene: ${shot.words.trim()}${shot.lyric ? ` The words read exactly "${shot.lyric}", sharp and legible.` : ''}` : '',
     cast.length ? `In the shot: ${cast.join('; ')}.` : '',
     seq.continuity.plan && cohesionOn(p.render) ? `Continuity: ${seq.continuity.plan}` : '',
     look?.prompt ? `Look: ${look.prompt}` : '',
@@ -29,6 +30,16 @@ export function sketchPrompt(base: string, sk: Sketch, follow = 'exact') {
 ${SKETCH_FOLLOW[follow] ?? SKETCH_FOLLOW.exact}
 ${sk.note ? `What the sketch shows: ${sk.note}\n` : ''}
 ${base}`;
+}
+
+// A storyboard still that follows the shot's greybox and its characters' sheets.
+export function refsPrompt(base: string, refs: { layout?: string; sheets: { name: string }[] }) {
+  if (!refs.layout && !refs.sheets.length) return base;
+  const lines: string[] = [];
+  let n = 1;
+  if (refs.layout) lines.push(`Image ${n++} is a plain grey Blender layout of this shot: follow its camera angle, framing and where each figure and structure stands. Never draw the grey mannequins, grey boxes or the grey floor; paint the real people and the real place.`);
+  for (const s of refs.sheets) lines.push(`Image ${n++} is the character sheet of ${s.name}: keep that face, hair, build and costume exactly. Draw one ${s.name}, never the sheet's several views.`);
+  return `${lines.join('\n')}\n\n${base}`;
 }
 
 export function sheetPrompt(p: Project, name: string, description: string) {

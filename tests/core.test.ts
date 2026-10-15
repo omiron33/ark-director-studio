@@ -118,3 +118,26 @@ test('a sketch rides into Qwen-Image as a reference image', () => {
   assert.match(text, /left is Martha/);
   assert.match(text, /Martha at the tomb\./);
 });
+
+test('greybox spec builds the sequence set and each character model; stills follow greybox and sheets', async () => {
+  const { greyboxSpec } = await import('../server/blender.ts');
+  const { stillRefs } = await import('../server/jobs.ts');
+  const { refsPrompt } = await import('../server/prompts.ts');
+  const p = project();
+  p.cast.push({ id: 'c1', name: 'Christ', description: '', sheet: 'cast/c1.png', model: { height: 1.8, build: 'average', costume: 'robe', color: '#ffffff', glow: 1 } });
+  const q = newSequence('Gates');
+  q.set = [{ label: 'gate', kind: 'box', x: 0, z: -2, w: 4, h: 6, d: 0.4 }];
+  const s = newShot({ castIds: ['c1'], duration: 6, greybox: { actors: [{ castId: 'c1', label: 'Christ', pose: 'walk', x: 0, z: 2, heading: 0, z2: 0 }], props: [], camera: { from: [0, 1.6, 8], to: [0, 1.6, 6], look: [0, 1.4, 0], lens: 35 }, still: 'greybox/g.png' } });
+  q.shots.push(s);
+  p.sequences.push(q);
+  const spec = greyboxSpec(p, q, s, s.greybox!);
+  assert.equal(spec.props.length, 1);
+  assert.equal(spec.actors[0].model?.costume, 'robe');
+  assert.equal(spec.frames % 17, 5);
+  assert.equal(greyboxSpec(p, q, s, { ...s.greybox!, useSet: false }).props.length, 0);
+  const refs = stillRefs(p, s);
+  assert.deepEqual([refs.layout, ...refs.sheets.map((x) => x.file)], ['greybox/g.png', 'cast/c1.png']);
+  const text = refsPrompt('A shot.', refs);
+  assert.match(text, /Image 1 is a plain grey Blender layout/);
+  assert.match(text, /Image 2 is the character sheet of Christ/);
+});

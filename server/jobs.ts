@@ -8,9 +8,9 @@ import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousS
 import { claimGpu, type GpuLease } from './gpuq.ts';
 import * as comfy from './comfy.ts';
 import { h3Graph, h3Len, imageGraph, ASPECTS } from './workflows.ts';
-import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt } from './prompts.ts';
+import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt } from './prompts.ts';
 import { lastFrame, assemble, probe } from './media.ts';
-import { renderGreybox, defaultGreybox } from './blender.ts';
+import { renderGreybox, defaultGreybox, renderModel } from './blender.ts';
 import { grokGenerate } from './grok.ts';
 import { runAgent, extractJson } from './agents.ts';
 import { runStage, pullSceneClip, ARK_STAGES } from './ark.ts';
@@ -89,7 +89,7 @@ async function comfyStill(projectId: string, prompt: string, sub: string, ctx: C
   const [width, height] = ASPECTS[aspect] ?? ASPECTS['16:9'];
   const s = seed();
   const refs = await Promise.all(refFiles.map((f, i) => comfy.upload(mediaPath(projectId, f), `ads-${projectId}-ref${i}-${path.basename(f)}`)));
-  ctx.log(`Qwen-Image ${width}x${height}, seed ${s}${refs.length ? `, following ${refs.length} sketch` : ''}`);
+  ctx.log(`Qwen-Image ${width}x${height}, seed ${s}${refs.length ? `, with ${refs.length} reference image${refs.length > 1 ? 's' : ''}` : ''}`);
   const r = await comfy.run(imageGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}`, refs }), { signal: ctx.signal, onBeat: (sec) => ctx.lease?.progress(`${sec}s`) });
   const o = r.outputs.find((x) => /\.(png|jpe?g|webp)$/i.test(x.filename));
   if (!o) throw Error('ComfyUI returned no image');
@@ -105,19 +105,22 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
     const sk = sketchId ? shot.sketches?.find((x) => x.id === sketchId) : undefined;
     if (sketchId && !sk?.image) throw Error('that sketch has no saved picture; save the sketch first');
     const base = prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true });
-    const text = sk ? sketchPrompt(base, sk, follow) : base;
+    // Without a sketch, the frame follows the shot's greybox (layout and camera) and its characters' sheets.
+    const refs = sk ? { layout: undefined, sheets: [] as { name: string; file: string }[] } : stillRefs(p, shot, useRefs !== false);
+    const text = sk ? sketchPrompt(base, sk, follow) : refsPrompt(base, refs);
+    const files = sk?.image ? [sk.image] : [refs.layout, ...refs.sheets.map((x) => x.file)].filter(Boolean) as string[];
     const r = engine === 'grok'
       ? await grokStill(projectId, text, 'storyboard', ctx)
-      : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, sk?.image ? [sk.image] : []);
+      : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
-      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : engine, seed: r.seed, at: now(), sketchId: sk?.id };
+      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : files.length ? `${engine}+refs` : engine, seed: r.seed, at: now(), sketchId: sk?.id, refs: engine === 'grok' ? undefined : files };
       s.storyboard.unshift(fr);
       s.selectedFrame = fr.id;
     });
@@ -147,12 +150,27 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     return r;
   },
 
+  async model(j, { projectId, castId }: any, ctx) {
+    const p = readProject(projectId);
+    const c = p.cast.find((x) => x.id === castId);
+    if (!c) throw Error('no such character');
+    ctx.log(`Blender model turnaround of ${c.name}`);
+    const file = await renderModel(c, mediaPath(projectId, 'models'), { signal: ctx.signal, onLine: (l) => { if (/Saved|error/i.test(l)) ctx.log(l.slice(0, 160)); } });
+    await mutate(projectId, (pp) => {
+      const cc = pp.cast.find((x) => x.id === castId)!;
+      const m = cc.model ?? (cc.model = {} as any);
+      if (m.render) m.renders = [m.render, ...(m.renders ?? [])].slice(0, 8);
+      m.render = rel(projectId, file);
+    });
+    return { file: rel(projectId, file) };
+  },
+
   async greybox(j, { projectId, shotId }: any, ctx) {
     const p = readProject(projectId);
-    const { shot } = findShot(p, shotId);
+    const { seq, shot } = findShot(p, shotId);
     const gb = shot.greybox ?? defaultGreybox(shot);
-    ctx.log(`Blender greybox: ${gb.actors.length} figures, ${gb.props.length} props, ${h3Len(shot.duration)} frames`);
-    const r = await renderGreybox(shot, gb, mediaPath(projectId, 'greybox'), { signal: ctx.signal, onLine: (l) => { if (/Fra:|Saved|error/i.test(l)) ctx.log(l.slice(0, 160)); } });
+    ctx.log(`Blender greybox: ${gb.actors.length} figures, ${gb.props.length + (gb.useSet !== false ? seq.set?.length ?? 0 : 0)} set pieces, ${h3Len(shot.duration)} frames`);
+    const r = await renderGreybox(p, seq, shot, gb, mediaPath(projectId, 'greybox'), { signal: ctx.signal, onLine: (l) => { if (/Fra:|Saved|error/i.test(l)) ctx.log(l.slice(0, 160)); } });
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
       s.greybox = { ...(s.greybox ?? gb), video: rel(projectId, r.video), still: rel(projectId, r.still) };
@@ -280,6 +298,16 @@ async function setTake(projectId: string, shotId: string, takeId: string, patch:
     if (selectIfFirst && (!s.selectedTake || !s.takes.find((x) => x.id === s.selectedTake && x.status === 'done'))) s.selectedTake = t.id;
   });
   projectChanged(projectId);
+}
+
+// The pictures a storyboard still follows: the shot's greybox render for layout and camera, then the
+// sheets of the characters in it (at most four, the people the greybox actually places first).
+export function stillRefs(p: Project, shot: Shot, on = true) {
+  if (!on) return { layout: undefined as string | undefined, sheets: [] as { name: string; file: string }[] };
+  const placed = (shot.greybox?.actors ?? []).map((a) => a.castId).filter(Boolean) as string[];
+  const ids = [...new Set([...placed, ...shot.castIds])];
+  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: c!.sheet! }));
+  return { layout: shot.greybox?.still, sheets };
 }
 
 // What a take starts from and carries, by the continuity rules:

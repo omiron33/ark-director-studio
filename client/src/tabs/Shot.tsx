@@ -96,6 +96,8 @@ export function ShotTab() {
           <Field label="Title"><Edit value={s.title} onSave={(v) => set(['title'], v)} /></Field>
           <Field label="What happens"><Edit multiline rows={3} value={s.action} onSave={(v) => set(['action'], v)} /></Field>
           <Field label="Prompt" hint="the words the model gets; empty uses what happens"><Edit multiline rows={6} value={s.prompt} onSave={(v) => set(['prompt'], v)} /></Field>
+          <Field label="Lyric" hint="the line this shot plays under"><Edit multiline rows={2} value={s.lyric ?? ''} onSave={(v) => set(['lyric'], v || undefined)} /></Field>
+          <Field label="Words in the scene" hint="carved, burned or lit on what, and where"><Edit multiline rows={2} value={s.words ?? ''} onSave={(v) => set(['words'], v || undefined)} placeholder="Burned into the basalt floor in front of Satan, lower third, glowing ember orange" /></Field>
           <div className="form-row">
             <Field label="Length" hint="seconds"><Edit type="number" step={0.5} value={s.duration} onSave={(v) => set(['duration'], Math.min(15, Math.max(1, Number(v) || 6)))} /></Field>
             <Field label="Camera"><Select value={s.camera.preset} onChange={(v) => set(['camera', 'preset'], v)} options={Object.entries(CAMERA_PRESETS).map(([k, c]) => [k, c.label])} /></Field>
@@ -109,7 +111,7 @@ export function ShotTab() {
               <Field label="Source"><Select value={s.source} onChange={(v) => set(['source'], v)} options={[['h3', 'H3 live action'], ['grok', 'Grok Imagine'], ['code', 'Ark code'], ['still', 'Still']]} /></Field>
               <Field label="Look"><Select value={s.lookId ?? ''} onChange={(v) => set(['lookId'], v || undefined)} options={[['', 'Sequence look'], ...p.looks.map((l) => [l.id, l.name] as [string, string])]} /></Field>
             </div>
-            <Field label="Dialogue or lyric"><Edit multiline rows={2} value={s.dialogue ?? s.lyric ?? ''} onSave={(v) => set([s.lyric !== undefined ? 'lyric' : 'dialogue'], v || undefined)} /></Field>
+            <Field label="Dialogue"><Edit multiline rows={2} value={s.dialogue ?? ''} onSave={(v) => set(['dialogue'], v || undefined)} /></Field>
           </Expert>
           <Field label="Characters">
             <div className="chips">

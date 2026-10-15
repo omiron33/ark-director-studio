@@ -366,3 +366,14 @@ img.paper { background: #fbfaf7; }
 .fp img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; cursor: pointer; }
 .fp-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 7px; }
 .fp-row .take-chosen { position: static; }
+
+.cast-pics { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #0a0908; }
+.cast-pics .busy-veil { position: absolute; inset: 0; }
+.pic-tag { position: absolute; left: 6px; top: 6px; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,.6); color: var(--text-2); }
+.model-ed { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.model-ed input[type=color] { width: 100%; height: 30px; padding: 0; border: 1px solid var(--line); background: none; }
+.plan-light circle { fill: rgba(255, 214, 120, 0.55); stroke: var(--amber); stroke-width: 0.05; cursor: grab; }
+.plan-set { fill: rgba(120, 150, 170, 0.18); stroke: var(--line-2); stroke-width: 0.03; stroke-dasharray: 0.12 0.08; pointer-events: none; }
+.plan-walk { stroke: var(--violet); stroke-width: 0.05; stroke-dasharray: 0.15 0.1; }
+.shot-words { font-size: 12px; color: var(--amber); }
+.gb-end { width: 100%; border-radius: 6px; border: 1px solid var(--line); }

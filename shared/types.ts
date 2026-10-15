@@ -79,6 +79,29 @@ export interface Sketch {
   at: string;
 }
 
+// A character's 3D model: the figure Blender builds for them in every greybox, so the guide clip already
+// shows who is who (a towering jailer, a robed figure carrying light, a crowd of the dead) and a turnaround
+// render of it sits beside the character sheet.
+export type ModelBuild = 'slight' | 'average' | 'broad' | 'gaunt' | 'colossal';
+export type ModelCostume = 'robe' | 'tunic' | 'rags' | 'loincloth' | 'regal' | 'shroud' | 'armor';
+export type ModelCarry = 'none' | 'cross' | 'lyre' | 'staff' | 'chains' | 'keys' | 'crossbeam';
+export interface CharacterModel {
+  height: number;           // metres, feet to crown
+  build: ModelBuild;
+  costume: ModelCostume;
+  color: string;            // costume colour, #rrggbb
+  hair?: 'none' | 'short' | 'long';
+  beard?: boolean;
+  crown?: boolean;
+  wings?: boolean;          // folded wings (a fallen angel)
+  carry?: ModelCarry;
+  glow?: number;            // 0..1: the light the figure carries (a halo of light that travels with them)
+  crowd?: number;           // > 1: this character is a crowd of that many figures (the dead)
+  render?: string;          // media path of the turnaround render
+  renders?: string[];       // earlier renders, newest first
+}
+export const DEFAULT_MODEL: CharacterModel = { height: 1.75, build: 'average', costume: 'tunic', color: '#8a7f72', hair: 'short', beard: false, carry: 'none', glow: 0 };
+
 export interface Character {
   id: string;
   name: string;
@@ -86,6 +109,7 @@ export interface Character {
   sheet?: string;           // media path of the character sheet image
   sheets?: string[];        // earlier sheets, newest first
   locked?: boolean;         // locked sheets are attached to every take the character is in
+  model?: CharacterModel;   // the 3D figure used in greyboxes
 }
 
 export interface Look {
@@ -102,18 +126,24 @@ export interface Camera {
   height?: string;          // eye, low, high, overhead
 }
 
-export interface GreyboxActor { castId?: string; label: string; pose: string; x: number; z: number; heading: number }
-export interface GreyboxProp { label: string; kind: 'box' | 'cylinder' | 'plane' | 'wall'; x: number; z: number; w: number; h: number; d: number }
+// x2/z2 (and pose2) are where the figure has walked to, and how it stands, by the end of the shot.
+export interface GreyboxActor { castId?: string; label: string; pose: string; x: number; z: number; heading: number; x2?: number; z2?: number; pose2?: string; y?: number }
+export interface GreyboxProp { label: string; kind: 'box' | 'cylinder' | 'plane' | 'wall' | 'arch' | 'stairs' | 'rock'; x: number; z: number; w: number; h: number; d: number; y?: number; rot?: number; tilt?: number; tilt2?: number }
+// A light in the greybox: Christ's light, a fire fissure. Drawn as a bright sphere so H3 sees where light comes from.
+export interface GreyboxLight { label: string; x: number; y: number; z: number; size: number; color?: string; x2?: number; y2?: number; z2?: number }
 export interface Greybox {
   actors: GreyboxActor[];
   props: GreyboxProp[];
+  lights?: GreyboxLight[];
+  mist?: number;            // 0..1 distance fog
+  useSet?: boolean;         // include the sequence's shared set (default true)
   camera: { from: [number, number, number]; to: [number, number, number]; look: [number, number, number]; lens: number };
   sun?: { azimuth: number; elevation: number };
   video?: string;           // media path of the rendered greybox clip
   still?: string;
 }
 
-export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string }
+export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string; refs?: string[] }
 
 export type TakeStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface Take {
@@ -140,6 +170,7 @@ export interface Shot {
   prompt: string;           // the generation prompt (built from action, cast, look and camera when empty)
   dialogue?: string;
   lyric?: string;
+  words?: string;           // how the lyric lives in the scene: carved, burned or lit on what, where in frame
   duration: number;         // seconds, 4..15 for H3
   from?: number;            // song seconds, when the shot is tied to the audio
   source: ShotSource;
@@ -169,6 +200,8 @@ export interface Sequence {
   title: string;
   summary: string;
   continuity: Continuity;
+  set?: GreyboxProp[];      // the place, built once for the sequence and shared by every shot's greybox
+  setLights?: GreyboxLight[];
   shots: Shot[];
   assembled?: string;       // media path of the latest assembled sequence
   review?: string;          // latest whole-sequence review
@@ -199,7 +232,7 @@ export interface Project {
   updated: string;
 }
 
-export type JobKind = 'storyboard' | 'take' | 'sheet' | 'look' | 'greybox' | 'grok-image' | 'grok-video' | 'agent' | 'ark' | 'assemble' | 'review';
+export type JobKind = 'storyboard' | 'take' | 'sheet' | 'look' | 'greybox' | 'model' | 'grok-image' | 'grok-video' | 'agent' | 'ark' | 'assemble' | 'review';
 export type JobStatus = 'queued' | 'waiting-gpu' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface Job {
   id: string;

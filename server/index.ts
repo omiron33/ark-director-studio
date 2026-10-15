@@ -65,18 +65,18 @@ app.post('/api/projects/:id/upload', express.raw({ type: '*/*', limit: '2gb' }),
 
 const P = (req: Request) => req.params.id;
 app.post('/api/projects/:id/storyboard', wrap((req) => {
-  const { shotId, engine = 'comfy', prompt } = req.body;
+  const { shotId, engine = 'comfy', prompt, refs = true } = req.body;
   const p = store.readProject(P(req));
   const { shot, seq } = store.findShot(p, shotId);
-  return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
+  return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt, refs }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
 }));
 app.post('/api/projects/:id/storyboard-all', wrap((req) => {
-  const { sequenceId, engine = 'comfy', missingOnly = true } = req.body;
+  const { sequenceId, engine = 'comfy', missingOnly = true, refs = true } = req.body;
   const p = store.readProject(P(req));
   const out = [];
   for (const q of p.sequences) if (!sequenceId || q.id === sequenceId) for (const s of q.shots) {
     if (missingOnly && s.storyboard.length) continue;
-    out.push(jobs.enqueue('storyboard', `${p.title}: ${s.title} storyboard frame`, { projectId: p.id, shotId: s.id, engine }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId: s.id, sequenceId: q.id } }));
+    out.push(jobs.enqueue('storyboard', `${p.title}: ${s.title} storyboard frame`, { projectId: p.id, shotId: s.id, engine, refs }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId: s.id, sequenceId: q.id } }));
   }
   return { queued: out.length };
 }));
@@ -128,6 +128,30 @@ app.post('/api/projects/:id/sheet', wrap((req) => {
   const p = store.readProject(P(req));
   const c = p.cast.find((x) => x.id === req.body.castId);
   return jobs.enqueue('sheet', `${p.title}: ${c?.name ?? 'character'} sheet`, { projectId: p.id, castId: req.body.castId, engine: req.body.engine }, { projectId: p.id, gpu: req.body.engine !== 'grok', ref: { castId: req.body.castId } });
+}));
+app.post('/api/projects/:id/model', wrap((req) => {
+  const p = store.readProject(P(req));
+  const c = p.cast.find((x) => x.id === req.body.castId);
+  if (!c) throw Error('no such character');
+  return jobs.enqueue('model', `${p.title}: ${c.name} model`, { projectId: p.id, castId: c.id }, { projectId: p.id, gpu: true, ref: { castId: c.id } });
+}));
+// Every character's sheet or model, or every shot's greybox (in one sequence or the whole film), queued in order.
+app.post('/api/projects/:id/cast-all', wrap((req) => {
+  const p = store.readProject(P(req));
+  const what = req.body.what === 'model' ? 'model' : 'sheet';
+  const list = p.cast.filter((c) => !req.body.missingOnly || (what === 'model' ? !c.model?.render : !c.sheet));
+  for (const c of list) jobs.enqueue(what, `${p.title}: ${c.name} ${what}`, { projectId: p.id, castId: c.id }, { projectId: p.id, gpu: true, ref: { castId: c.id } });
+  return { queued: list.length };
+}));
+app.post('/api/projects/:id/greybox-all', wrap((req) => {
+  const p = store.readProject(P(req));
+  let n = 0;
+  for (const q of p.sequences) if (!req.body.sequenceId || q.id === req.body.sequenceId) for (const s of q.shots) {
+    if (req.body.missingOnly && s.greybox?.video) continue;
+    jobs.enqueue('greybox', `${p.title}: ${s.title} Blender greybox`, { projectId: p.id, shotId: s.id }, { projectId: p.id, gpu: true, ref: { shotId: s.id, sequenceId: q.id } });
+    n++;
+  }
+  return { queued: n };
 }));
 app.post('/api/projects/:id/look', wrap((req) => {
   const p = store.readProject(P(req));

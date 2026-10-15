@@ -20,8 +20,8 @@ their header and scroll inside themselves.
 | Storyboard | One card per shot: frame, prompt, camera and characters, plus regenerate, reorder and delete. Frame the rest, take a whole sequence, assemble it. The sequence's continuity plan sits beside it |
 | Shot | The chosen take large, every take with ratings, the shot's settings, and what the next take will start from |
 | Sketch | Draw the frame yourself with stick figures, lines, boxes, circles, arrows and labels, then generate storyboard frames that follow the drawing |
-| Cast & looks | Character sheets and look images. Sheets ride along on every take a character is in |
-| Greybox | A top-down plan of figures, props and the camera move, rendered in Blender as the guide clip for H3 |
+| Cast & looks | Character sheets, 3D character models and look images. Sheets ride along on every still and take a character is in; the model is the figure every greybox builds for them, shown as a front, side and back render |
+| Greybox | A top-down plan of figures (with where they walk to), props that can topple, lights and the camera move over the sequence's shared set, rendered in Blender as the guide clip for H3 |
 | Timeline | A live cut of the chosen takes with the audio under them, the tracks, assembling, and an agent's review of the whole sequence |
 | Queue | Studio jobs and logs, and the machine's GPU queue across every agent |
 | Ark engine | The film's video type, pull and push film.json, and the engine's own steps for that type: storyboard, draft, stills, the render at its tier, photoreal repaints, music video, checks, critic |
@@ -79,7 +79,7 @@ you turn it on:
 - **Ark engine**: a thin adapter (`server/ark.ts`) reads film.json, writes back only scene prompts and take plans (keeping `film.json.studio-bak`), and runs the engine's own commands. Engine changes stay in the engine.
 - **Agents**: Claude, Codex and Grok Build through their own command-line tools, text in and text out.
 - **Grok Imagine**: a real browser window with its own profile, signed in to your Grok subscription by you. If Grok asks for a human check, the job stops and says so.
-- **Blender**: `blender/greybox.py` builds mannequins, boxes, a sun and the camera move, and renders the guide clip.
+- **Blender**: `blender/greybox.py` builds each character from their model (height, build, costume, what they carry, the light they carry, or a crowd), the sequence's set, lights, mist and the camera move, and renders the guide clip in EEVEE. Storyboard stills follow the greybox's first frame and the characters' sheets as reference images.
 
 ## Run it
 
