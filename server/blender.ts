@@ -33,8 +33,11 @@ async function blender(spec: unknown, framesDir: string, opts: { signal?: AbortS
   fs.mkdirSync(framesDir, { recursive: true });
   const specFile = path.join(framesDir, 'spec.json');
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  const r = await exec(config.blender, ['-b', '--factory-startup', '-P', path.join(ROOT, 'blender', 'greybox.py'), '--', '--spec', specFile, '--out', framesDir], { ...opts, timeoutMs: 30 * 60000 });
-  if (r.code !== 0 || !/GREYBOX_DONE/.test(r.out)) throw Error(`Blender failed: ${(r.err || r.out).slice(-800)}`);
+  const run = () => exec(config.blender, ['-b', '--factory-startup', '-P', path.join(ROOT, 'blender', 'greybox.py'), '--', '--spec', specFile, '--out', framesDir], { ...opts, timeoutMs: 30 * 60000 });
+  let r = await run();
+  // EEVEE's first run in a fresh session can exit while compiling shaders; one retry clears it
+  if ((r.code !== 0 || !/GREYBOX_DONE/.test(r.out)) && !opts.signal?.aborted) r = await run();
+  if (r.code !== 0 || !/GREYBOX_DONE/.test(r.out)) throw Error(`Blender failed (exit ${r.code}): ${(r.out + r.err).split(/\r?\n/).filter((l) => !/DeprecationWarning|use_nodes = True/.test(l)).slice(-12).join('\n')}`);
 }
 
 export async function renderGreybox(p: Project, seq: Sequence | undefined, shot: Shot, gb: Greybox, outDir: string, opts: { signal?: AbortSignal; onLine?: (l: string) => void } = {}) {
