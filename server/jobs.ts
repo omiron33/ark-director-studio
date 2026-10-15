@@ -77,6 +77,9 @@ export function cancelJob(id: string) {
   const ac = controllers.get(id);
   if (!ac) return false;
   ac.abort();
+  // a job still waiting its turn never starts, so mark it here rather than leave it 'queued' forever
+  const j = getJob(id);
+  if (j?.status === 'queued') { update(j, { status: 'cancelled', ended: now(), note: 'cancelled' }); controllers.delete(id); }
   return true;
 }
 
