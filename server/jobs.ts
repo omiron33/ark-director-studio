@@ -129,7 +129,7 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
   if (cast.some((x) => !x.prop)) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
   lines.push('A clean, smooth cinematic photograph: no film grain, no noise, no oversharpening, no HDR crunch, no crackle, mottling or cracked-paint texture on faces, skin or cloth; natural skin. Keep the world’s light, colour and mood exactly as described, and add no fire where none is described. No blood and no wounds on anyone.');
   lines.push('No text anywhere: no captions, subtitles, words, letters, signs or watermarks. Spoken or sung lines are acted on the faces, never written in the picture.');
-  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white; there is exactly one Christ in the picture.");
+  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white; there is exactly one Christ in the picture, and he is an ordinary man of normal human height, never larger than life or giant beside doors, walls or other people.");
   if (people.some((x) => /satan/i.test(x.name))) lines.push('Satan shows only fearful anger: he never kneels, prays, bows, folds or lifts his hands in reverence, and never lies down unless the shot says he is thrown down.');
   const [f] = await grokGenerate({ prompt: [...lines, stillWords(prompt)].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
@@ -283,9 +283,10 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       characters: (await Promise.all(inputs.sheets.map((s, i) => up(s, `cast${i}`)))).filter(Boolean) as string[],
       startFrame: inputs.start ? await up(inputs.start, 'start') : null,
       endFrame: inputs.end ? await up(inputs.end, 'end') : null,
+      songAudio: opts.lipsync?.audio ? await up(opts.lipsync.audio, 'sung') : null,
       prefix: `ark-studio/${tag}`,
     });
-    ctx.log(`H3 ${frames} frames, seed ${take.seed}; start ${inputs.start ? 'yes' : 'no'}, end ${inputs.end ? 'yes' : 'no'}, guide ${inputs.guide ? 'greybox' : 'none'}, look ${inputs.look ? 'yes' : 'no'}, ${inputs.sheets.length} character sheets`);
+    ctx.log(`H3 ${frames} frames, seed ${take.seed}; start ${inputs.start ? 'yes' : 'no'}, end ${inputs.end ? 'yes' : 'no'}, guide ${inputs.guide ? 'greybox' : 'none'}, look ${inputs.look ? 'yes' : 'no'}, ${inputs.sheets.length} character sheets${opts.lipsync?.audio ? `, lip sync to ${opts.lipsync.audio}` : ''}`);
     await setTake(projectId, shotId, takeId, { status: 'running', jobId: j.id, startFrom: inputs.start, params: { ...take.params, inputs } });
     const r = await comfy.run(graph, { signal: ctx.signal, onBeat: (sec) => { if (sec % 30 < 3) ctx.lease?.progress(`${Math.round(sec / 60)} min`); } });
     const o = r.outputs.find((x) => /\.(mp4|webm|mov)$/i.test(x.filename));

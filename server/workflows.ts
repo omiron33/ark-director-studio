@@ -29,6 +29,7 @@ export interface H3Params {
   characters?: string[];      // uploaded character sheets
   startFrame?: string | null; // uploaded image anchored at frame 0
   endFrame?: string | null;   // uploaded image anchored at the last frame
+  songAudio?: string | null;  // uploaded audio locked into H3's audio stream for lip sync (the shot's slice, from 0)
   width?: number;
   height?: number;
   prefix: string;
@@ -81,6 +82,15 @@ export function h3Graph(p: H3Params) {
     return pos;
   };
 
+  // lip sync: write the shot's sung slice into the AV latent and protect it from denoising, so the
+  // video is generated to match it (MiniMaxH3SongMaskedAVContext); the take's own audio is not used
+  const lat = (src: [string, number]): [string, number] => {
+    if (!p.songAudio) return src;
+    g[40] = { class_type: 'LoadAudio', inputs: { audio: p.songAudio } };
+    g[41] = { class_type: 'MiniMaxH3SongMaskedAVContext', inputs: { latent: src, audio_vae: ['4', 0], master_audio: ['40', 0], clip_start_seconds: 0, context_length: 0, source_fps: 24, crop: 'disabled' } };
+    return ['41', 0];
+  };
+
   if (p.guideVideo) {
     g[20] = { class_type: 'LoadVideo', inputs: { file: p.guideVideo } };
     g[21] = { class_type: 'GetVideoComponents', inputs: { video: ['20', 0] } };
@@ -88,11 +98,11 @@ export function h3Graph(p: H3Params) {
     g[7] = { class_type: 'BasicGuider', inputs: { model: ['5', 0], conditioning: anchor(['6', 0], ['6', 1], 50) } };
     g[17] = { class_type: 'BasicGuider', inputs: { model: ['5', 0], conditioning: anchor(['16', 0], ['6', 1], 60) } };
     g[19] = { class_type: 'SplitSigmas', inputs: { sigmas: ['9', 0], step: keep } };
-    g[11] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['8', 0], guider: ['7', 0], sampler: ['10', 0], sigmas: ['19', 0], latent_image: ['6', 1] } };
+    g[11] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['8', 0], guider: ['7', 0], sampler: ['10', 0], sigmas: ['19', 0], latent_image: lat(['6', 1]) } };
     g[22] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['18', 0], guider: ['17', 0], sampler: ['10', 0], sigmas: ['19', 1], latent_image: ['11', 0] } };
   } else {
     g[17] = { class_type: 'BasicGuider', inputs: { model: ['5', 0], conditioning: anchor(['16', 0], ['16', 1], 60) } };
-    g[22] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['8', 0], guider: ['17', 0], sampler: ['10', 0], sigmas: ['9', 0], latent_image: ['16', 1] } };
+    g[22] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['8', 0], guider: ['17', 0], sampler: ['10', 0], sigmas: ['9', 0], latent_image: lat(['16', 1]) } };
   }
   g[12] = { class_type: 'VAEDecode', inputs: { samples: ['22', 0], vae: ['3', 0] } };
   g[14] = { class_type: 'CreateVideo', inputs: { images: ['12', 0], fps: H3.fps, bit_depth: 8 } };
