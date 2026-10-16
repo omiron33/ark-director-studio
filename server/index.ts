@@ -14,7 +14,7 @@ import { agentStatus } from './agents.ts';
 import { grokStatus, openGrok, closeGrok } from './grok.ts';
 import { applyOps, type Op } from './ops.ts';
 import { waveform } from './media.ts';
-import type { AgentId, StudioStatus } from '../shared/types.ts';
+import { stillModelOf, type AgentId, type StudioStatus } from '../shared/types.ts';
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
@@ -65,9 +65,11 @@ app.post('/api/projects/:id/upload', express.raw({ type: '*/*', limit: '2gb' }),
 
 const P = (req: Request) => req.params.id;
 app.post('/api/projects/:id/storyboard', wrap((req) => {
-  const { shotId, engine = 'comfy', prompt, refs = true, at, fix, refFiles, stills } = req.body;
+  const { shotId, prompt, refs = true, at, fix, refFiles, stills } = req.body;
   const p = store.readProject(P(req));
   const { shot, seq } = store.findShot(p, shotId);
+  // Premium (Grok Imagine) uses no local GPU, so it does not queue on the GPU dashboard
+  const engine = req.body.engine ?? ((stills ?? stillModelOf(p, shot)) === 'premium' && !refFiles?.length ? 'grok' : 'comfy');
   return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt, refs, at, fix, refFiles, stills }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
 }));
 // End frames for every shot whose camera moves (greybox start and end marks differ), in one sequence or the film.
@@ -87,12 +89,13 @@ app.post('/api/projects/:id/end-frames', wrap((req) => {
   return { queued: n };
 }));
 app.post('/api/projects/:id/storyboard-all', wrap((req) => {
-  const { sequenceId, engine = 'comfy', missingOnly = true, refs = true, stills } = req.body;
+  const { sequenceId, missingOnly = true, refs = true, stills } = req.body;
   const p = store.readProject(P(req));
   const out = [];
   for (const q of p.sequences) if (!sequenceId || q.id === sequenceId) for (const s of q.shots) {
     if (missingOnly && s.storyboard.length) continue;
-    out.push(jobs.enqueue('storyboard', `${p.title}: ${s.title} storyboard frame`, { projectId: p.id, shotId: s.id, engine, refs, stills }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId: s.id, sequenceId: q.id } }));
+    const eng = req.body.engine ?? ((stills ?? stillModelOf(p, s)) === 'premium' ? 'grok' : 'comfy');
+    out.push(jobs.enqueue('storyboard', `${p.title}: ${s.title} storyboard frame`, { projectId: p.id, shotId: s.id, engine: eng, refs, stills }, { projectId: p.id, gpu: eng !== 'grok', ref: { shotId: s.id, sequenceId: q.id } }));
   }
   return { queued: out.length };
 }));

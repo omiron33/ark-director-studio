@@ -16,7 +16,7 @@ export type Mode = 'basic' | 'expert';
 //   live       live action: H3 from prompts, looks, character sheets and Blender greyboxes.
 export type RenderLook = 'code' | 'photoreal' | 'mixed' | 'live';
 // Still frames from ComfyUI (storyboard frames, sheets, looks): quality is FLUX 3 Image Klein, speed is Qwen-Image 2.1.
-export type StillModel = 'quality' | 'speed';
+export type StillModel = 'quality' | 'speed' | 'premium'; // premium: Grok Imagine (storyboard frames only; sheets and looks stay on quality)
 export type Tier = 'fast' | 'standard' | 'premium' | 'ultra';
 export interface RenderSetup {
   look: RenderLook;
@@ -59,8 +59,11 @@ export const withRender = (r?: Partial<RenderSetup>): RenderSetup => ({ ...DEFAU
 export const STILL_MODELS: Record<StillModel, { label: string; model: string; blurb: string }> = {
   quality: { label: 'Quality', model: 'FLUX 3 Klein', blurb: 'FLUX 3 Image Klein int8, 16 steps: sharper, more lifelike faces and hands.' },
   speed: { label: 'Speed', model: 'Qwen-Image', blurb: 'Qwen-Image 2.1 int8, 20 steps: quicker on the 12 GB card.' },
+  premium: { label: 'Premium', model: 'Grok Imagine', blurb: "Grok Imagine through the Studio's own Grok window (sign in once in Settings): the best staging, from the shot's words only, no reference images." },
 };
 export const stillModelOf = (p: { render?: Partial<RenderSetup> }, shot?: { stills?: StillModel }): StillModel => shot?.stills ?? withRender(p.render).stills;
+// Sheets, portraits and looks need reference images, which Grok Imagine does not take: premium falls back to quality there.
+export const localStillModel = (m: StillModel): 'quality' | 'speed' => (m === 'premium' ? 'quality' : m);
 // Shot cohesion (character sheets on every take, one continuity plan, chaining from the last frame)
 // is what generated pictures need. Pure code films keep it off unless asked.
 export const cohesionOn = (r?: Partial<RenderSetup>) => { const x = withRender(r); return x.cohesion === 'on' || (x.cohesion === 'auto' && x.look !== 'code'); };

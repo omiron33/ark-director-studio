@@ -2,8 +2,8 @@ import { RefreshCw, Trash2, Clapperboard, ChevronLeft, ChevronRight, Plus, Image
 import { api, media } from '../api';
 import { useStudio, useSelection, tc } from '../store';
 import { useState } from 'react';
-import { Card, Btn, Edit, Select, Empty, Expert, Field, StatusTag, Cols, Col } from '../ui';
-import { CAMERA_PRESETS, type Shot, type Sequence, type Project } from '../../../shared/types';
+import { Card, Btn, Edit, Select, Empty, Expert, Field, StatusTag, Cols, Col, Segmented } from '../ui';
+import { CAMERA_PRESETS, STILL_MODELS, withRender, type Shot, type Sequence, type Project, type StillModel } from '../../../shared/types';
 
 export function SequenceRail() {
   const { project: p, sequenceId, select } = useStudio();
@@ -83,6 +83,7 @@ function FilmBoard({ p }: { p: Project }) {
   const { select, setTab, ops, run, jobs } = useStudio();
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [armed, setArmed] = useState(false);
+  const [model, setModel] = useState<StillModel>(withRender(p.render).stills);
   type Pic = { key: string; fid?: string; file?: string; n: number; end: boolean; q: string; s: string };
   const pics: Pic[] = [];
   let n = 0;
@@ -96,10 +97,10 @@ function FilmBoard({ p }: { p: Project }) {
   const chosen = pics.filter((x) => sel.has(x.key));
   const busy = (x: Pic) => jobs.some((j) => j.ref?.shotId === x.s && ['queued', 'waiting-gpu', 'running'].includes(j.status));
   const toggle = (k: string) => setSel((old) => { const nx = new Set(old); if (nx.has(k)) nx.delete(k); else nx.add(k); return nx; });
-  const regen = (engine: 'comfy' | 'grok') => {
+  const regen = () => {
     const list = chosen;
-    run(async () => { for (const x of list) await api.post(p.id, 'storyboard', { shotId: x.s, engine, ...(x.end ? { at: 'end' } : {}), ...(engine === 'comfy' ? { stills: 'quality' } : {}) }); },
-      `${list.length} new frame${list.length > 1 ? 's' : ''} queued (${engine === 'grok' ? 'Grok Imagine' : 'FLUX'})`);
+    run(async () => { for (const x of list) await api.post(p.id, 'storyboard', { shotId: x.s, stills: model, ...(x.end ? { at: 'end' } : {}) }); },
+      `${list.length} new frame${list.length > 1 ? 's' : ''} queued (${STILL_MODELS[model].model})`);
     setSel(new Set());
   };
   const del = () => {
@@ -122,11 +123,11 @@ function FilmBoard({ p }: { p: Project }) {
       <div className={`fb-tools ${chosen.length ? 'on' : ''}`}>
         {chosen.length ? <>
           <b>{chosen.length} selected</b>
-          <Btn small kind="solid" onClick={() => regen('comfy')}><RefreshCw size={13} />New with FLUX</Btn>
-          <Btn small kind="solid" onClick={() => regen('grok')}><Sparkles size={13} />New with Grok Imagine</Btn>
+          <Segmented value={model} onChange={(v) => setModel(v as StillModel)} options={[['quality', `Quality · ${STILL_MODELS.quality.model}`], ['speed', `Speed · ${STILL_MODELS.speed.model}`], ['premium', `Premium · ${STILL_MODELS.premium.model}`]]} />
+          <Btn small kind="solid" onClick={regen}><RefreshCw size={13} />Regenerate</Btn>
           <Btn small kind="danger" onClick={del}><Trash2 size={13} />{armed ? 'Click again to delete' : 'Delete'}</Btn>
           <Btn small onClick={() => setSel(new Set())}>Clear</Btn>
-        </> : <span className="muted small">Click pictures to select them, then delete them or make new ones with FLUX or Grok Imagine. Double-click opens the shot.</span>}
+        </> : <span className="muted small">Click pictures to select them, then regenerate them (Quality · FLUX, Speed · Qwen or Premium · Grok Imagine) or delete them. Double-click opens the shot.</span>}
       </div>
       <div className="filmstrip">
         {pics.map((x) => (

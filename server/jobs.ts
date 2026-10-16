@@ -15,7 +15,7 @@ import { grokGenerate } from './grok.ts';
 import { runAgent, extractJson } from './agents.ts';
 import { runStage, pullSceneClip, ARK_STAGES } from './ark.ts';
 import type { Job, JobKind, Project, Take, AgentId, Shot, StillModel } from '../shared/types.ts';
-import { CAMERA_PRESETS, cohesionOn, stillModelOf, STILL_MODELS } from '../shared/types.ts';
+import { CAMERA_PRESETS, cohesionOn, stillModelOf, localStillModel, STILL_MODELS } from '../shared/types.ts';
 
 const FILE = path.join(config.dataDir, 'jobs.json');
 const jobs: Job[] = (() => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return []; } })();
@@ -88,7 +88,8 @@ type Ctx = { signal: AbortSignal; lease: GpuLease | null; log: (l: string) => vo
 const seed = () => Math.floor(Math.random() * 2 ** 31);
 const rel = (projectId: string, abs: string) => path.relative(mediaDir(projectId), abs).split(path.sep).join('/');
 
-async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9', refFiles: string[] = [], stills: StillModel = 'quality') {
+async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9', refFiles: string[] = [], stillsIn: StillModel = 'quality') {
+  const stills = localStillModel(stillsIn);
   const [width, height] = ASPECTS[aspect] ?? ASPECTS['16:9'];
   const s = seed();
   const refs = await Promise.all(refFiles.map((f, i) => comfy.upload(mediaPath(projectId, f), `ads-${projectId}-ref${i}-${path.basename(f)}`)));
@@ -114,7 +115,9 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
     // the job's own choice, else the shot's override, else the film's setting (quality by default)
-    const sm: StillModel = stills === 'speed' || stills === 'quality' ? stills : stillModelOf(p, shot);
+    const sm: StillModel = stills === 'speed' || stills === 'quality' || stills === 'premium' ? stills : stillModelOf(p, shot);
+    // Premium is Grok Imagine; a blend always paints locally from its pictures
+    if (sm === 'premium' && !(Array.isArray(refFiles) && refFiles.length) && !sketchId) engine = 'grok';
     if (Array.isArray(refFiles) && refFiles.length) {
       // a frame painted from chosen pictures (a blend): the prompt says what each image is for
       const r = await comfyStill(projectId, String(prompt ?? ''), 'storyboard', ctx, p.aspect, refFiles.slice(0, 8), sm);
