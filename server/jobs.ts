@@ -119,7 +119,8 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       const refs = { ...stillRefs(p, shot, true), layout: endLayout };
       let text = endFramePrompt(refsPrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), refs), shot.camera.move);
       const files = [endLayout, ...refs.sheets.map((x) => x.file)];
-      if (start) { files.push(start.file); text += `\nImage ${files.length} is the shot's first frame: keep its place, light, colours and people exactly; only the viewpoint and poses move on.`; }
+      // the first frame is not passed as an image: it pins the composition and the move disappears. Its words carry the continuity.
+      if (start) text += `\nKeep the same place, light, colours and people as the shot's first frame, but seen from where the camera has moved to (Image 1), with the framing clearly different from the start.`;
       const r = await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
       await mutate(projectId, (pp) => {
         const s = findShot(pp, shotId).shot;
