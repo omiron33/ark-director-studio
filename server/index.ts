@@ -154,9 +154,9 @@ app.post('/api/projects/:id/model', wrap((req) => {
 // Every character's sheet or model, or every shot's greybox (in one sequence or the whole film), queued in order.
 app.post('/api/projects/:id/cast-all', wrap((req) => {
   const p = store.readProject(P(req));
-  const what = req.body.what === 'model' ? 'model' : 'sheet';
-  const list = p.cast.filter((c) => !req.body.missingOnly || (what === 'model' ? !c.model?.render : !c.sheet));
-  for (const c of list) jobs.enqueue(what, `${p.title}: ${c.name} ${what}`, { projectId: p.id, castId: c.id }, { projectId: p.id, gpu: true, ref: { castId: c.id } });
+  const what = req.body.what === 'model' ? 'model' : req.body.what === 'portrait' ? 'portrait' : 'sheet';
+  const list = p.cast.filter((c) => !req.body.missingOnly || (what === 'model' ? !c.model?.render : what === 'portrait' ? !c.portrait : !c.sheet));
+  for (const c of list) jobs.enqueue(what === 'model' ? 'model' : 'sheet', `${p.title}: ${c.name} ${what}`, { projectId: p.id, castId: c.id, portrait: what === 'portrait' }, { projectId: p.id, gpu: true, ref: { castId: c.id } });
   return { queued: list.length };
 }));
 app.post('/api/projects/:id/greybox-all', wrap((req) => {

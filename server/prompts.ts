@@ -43,12 +43,16 @@ export function refsPrompt(base: string, refs: { layout?: string; sheets: { name
   const lines: string[] = [];
   let n = 1;
   if (refs.layout) lines.push(`Image ${n++} is a plain grey Blender layout of this shot: follow its camera angle, framing and where each figure and structure stands. Never draw the grey mannequins, grey boxes or the grey floor; paint the real people and the real place.`);
-  for (const s of refs.sheets) lines.push(`Image ${n++} is the character sheet of ${s.name}: keep that face, hair, build and costume exactly. Draw one ${s.name}, never the sheet's several views.`);
+  for (const s of refs.sheets) lines.push(`Image ${n++} shows ${s.name}: keep that face, hair, build and costume exactly. ${s.name} appears exactly once in the frame.`);
   return `${lines.join('\n')}\n\n${base}`;
 }
 
 export function sheetPrompt(p: Project, name: string, description: string) {
   return `Character reference sheet of ${name}: ${description}. Full body front view, three-quarter view and side view standing side by side, plus a head-and-shoulders close-up, on a plain neutral grey studio background, even soft light, consistent costume in every view. ${p.style ? `Style: ${p.style}` : ''}`;
+}
+
+export function portraitPrompt(p: Project, name: string, description: string) {
+  return `Image 1 is the character sheet of ${name}. Paint ONE full-length portrait of this same person: exactly one person in the image, standing, facing the camera, head to toe, the same face, hair, build and costume as the sheet, on a plain neutral grey studio background with even soft light. Never repeat the person, never draw several views. ${name}: ${description}. ${p.style ? `Style: ${p.style}` : ''}`;
 }
 
 export function lookPrompt(p: Project, words: string) {

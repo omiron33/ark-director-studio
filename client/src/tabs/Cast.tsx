@@ -43,6 +43,7 @@ export function Cast() {
       <Card area="cast" id="cast" title={`Characters (${p.cast.length})`} icon={<Users size={15} />} actions={<>
           <Btn small onClick={() => run(() => api.post(p.id, 'cast-all', { what: 'sheet', missingOnly: true }), 'Missing sheets queued')}><RefreshCw size={13} />Missing sheets</Btn>
           <Btn small onClick={() => run(() => api.post(p.id, 'cast-all', { what: 'model', missingOnly: false }), 'Every model queued')}><Box size={13} />Build all models</Btn>
+          <Btn small onClick={() => run(() => api.post(p.id, 'cast-all', { what: 'portrait', missingOnly: false }), 'Portraits queued')}><RefreshCw size={13} />Portraits from sheets</Btn>
           <Btn small onClick={() => ops([{ op: 'insert', path: ['cast'], value: {} }])}><Plus size={13} />Character</Btn></>}>
         <p className="muted small lead">A character's sheet rides along as a reference on every still and take they are in, so the same face, build and costume carry from shot to shot. Their model is the figure Blender builds for them in every greybox.</p>
         {p.cast.length === 0 ? <Empty>No characters yet.</Empty> : (
@@ -54,6 +55,7 @@ export function Cast() {
                     {c.sheet ? <img src={media(p.id, c.sheet)} /> : <div className="ph">{c.name[0]}</div>}
                     <span className="pic-tag">sheet</span>
                   </div>
+                  {c.portrait ? <div className="cast-sheet" title="Portrait: the single view stills use"><img src={media(p.id, c.portrait)} /><span className="pic-tag">portrait</span></div> : null}
                   <div className="cast-sheet" title="3D model in the greybox">
                     {c.model?.render ? <img src={media(p.id, c.model.render)} /> : <div className="ph"><Box size={28} /></div>}
                     <span className="pic-tag">model</span>

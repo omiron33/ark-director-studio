@@ -8,7 +8,7 @@ import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousS
 import { claimGpu, type GpuLease } from './gpuq.ts';
 import * as comfy from './comfy.ts';
 import { h3Graph, h3Len, imageGraph, ASPECTS } from './workflows.ts';
-import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt, endFramePrompt } from './prompts.ts';
+import { shotPrompt, sheetPrompt, portraitPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt, endFramePrompt } from './prompts.ts';
 import { lastFrame, assemble, probe } from './media.ts';
 import { renderGreybox, defaultGreybox, renderModel } from './blender.ts';
 import { grokGenerate } from './grok.ts';
@@ -151,10 +151,16 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     return r;
   },
 
-  async sheet(j, { projectId, castId, engine = 'comfy' }: any, ctx) {
+  async sheet(j, { projectId, castId, engine = 'comfy', portrait }: any, ctx) {
     const p = readProject(projectId);
     const c = p.cast.find((x) => x.id === castId);
     if (!c) throw Error('no such character');
+    if (portrait) {
+      if (!c.sheet) throw Error('make the sheet first');
+      const r = await comfyStill(projectId, portraitPrompt(p, c.name, c.description), 'cast', ctx, '9:16', [c.sheet]);
+      await mutate(projectId, (pp) => { pp.cast.find((x) => x.id === castId)!.portrait = r.file; });
+      return r;
+    }
     const text = sheetPrompt(p, c.name, c.description);
     const r = engine === 'grok' ? await grokStill(projectId, text, 'cast', ctx) : await comfyStill(projectId, text, 'cast', ctx, '16:9');
     await mutate(projectId, (pp) => {
@@ -330,7 +336,7 @@ export function stillRefs(p: Project, shot: Shot, on = true) {
   if (!on) return { layout: undefined as string | undefined, sheets: [] as { name: string; file: string }[] };
   const placed = (shot.greybox?.actors ?? []).map((a) => a.castId).filter(Boolean) as string[];
   const ids = [...new Set([...placed, ...shot.castIds])];
-  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: c!.sheet! }));
+  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.portrait || c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: c!.portrait ?? c!.sheet! }));
   return { layout: shot.greybox?.still, sheets };
 }
 

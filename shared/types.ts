@@ -107,6 +107,7 @@ export interface Character {
   name: string;
   description: string;      // what never changes: face, build, hair, costume
   sheet?: string;           // media path of the character sheet image
+  portrait?: string;        // one full-length view of the character, painted from the sheet: what stills use as the reference, so the sheet's several views are never copied into a frame
   sheets?: string[];        // earlier sheets, newest first
   locked?: boolean;         // locked sheets are attached to every take the character is in
   model?: CharacterModel;   // the 3D figure used in greyboxes

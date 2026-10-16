@@ -139,5 +139,5 @@ test('greybox spec builds the sequence set and each character model; stills foll
   assert.deepEqual([refs.layout, ...refs.sheets.map((x) => x.file)], ['greybox/g.png', 'cast/c1.png']);
   const text = refsPrompt('A shot.', refs);
   assert.match(text, /Image 1 is a plain grey Blender layout/);
-  assert.match(text, /Image 2 is the character sheet of Christ/);
+  assert.match(text, /Image 2 shows Christ: .*appears exactly once/);
 });
