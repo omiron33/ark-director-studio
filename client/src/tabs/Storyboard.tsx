@@ -77,28 +77,67 @@ function ShotCard({ p, q, s, i }: { p: Project; q: Sequence; s: Shot; i: number 
 }
 
 // The whole film as pictures only: every shot's key frames (start, then end) in story order, one
-// continuous strip, so a shot that doesn't follow from the one before is easy to see. A small number
-// in the corner says which shot it is; click to select, double-click to open it.
+// continuous strip, so a shot that doesn't follow from the one before is easy to see. Click pictures to
+// select them, then delete them or make new ones with FLUX (Quality) or Grok Imagine; double-click opens the shot.
 function FilmBoard({ p }: { p: Project }) {
-  const { select, setTab } = useStudio();
-  const frames: { key: string; file?: string; n: number; end: boolean; q: string; s: string }[] = [];
+  const { select, setTab, ops, run, jobs } = useStudio();
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [armed, setArmed] = useState(false);
+  type Pic = { key: string; fid?: string; file?: string; n: number; end: boolean; q: string; s: string };
+  const pics: Pic[] = [];
   let n = 0;
   for (const q of p.sequences) for (const s of q.shots) {
     n++;
     const f = s.storyboard.find((x) => x.id === s.selectedFrame) ?? s.storyboard[0];
     const e = s.endFrames?.find((x) => x.id === s.selectedEnd) ?? s.endFrames?.[0];
-    frames.push({ key: s.id + 's', file: f?.file, n, end: false, q: q.id, s: s.id });
-    if (e) frames.push({ key: s.id + 'e', file: e.file, n, end: true, q: q.id, s: s.id });
+    pics.push({ key: s.id + ':s', fid: f?.id, file: f?.file, n, end: false, q: q.id, s: s.id });
+    if (e) pics.push({ key: s.id + ':e', fid: e.id, file: e.file, n, end: true, q: q.id, s: s.id });
   }
+  const chosen = pics.filter((x) => sel.has(x.key));
+  const busy = (x: Pic) => jobs.some((j) => j.ref?.shotId === x.s && ['queued', 'waiting-gpu', 'running'].includes(j.status));
+  const toggle = (k: string) => setSel((old) => { const nx = new Set(old); if (nx.has(k)) nx.delete(k); else nx.add(k); return nx; });
+  const regen = (engine: 'comfy' | 'grok') => {
+    const list = chosen;
+    run(async () => { for (const x of list) await api.post(p.id, 'storyboard', { shotId: x.s, engine, ...(x.end ? { at: 'end' } : {}), ...(engine === 'comfy' ? { stills: 'quality' } : {}) }); },
+      `${list.length} new frame${list.length > 1 ? 's' : ''} queued (${engine === 'grok' ? 'Grok Imagine' : 'FLUX'})`);
+    setSel(new Set());
+  };
+  const del = () => {
+    if (!armed) { setArmed(true); setTimeout(() => setArmed(false), 4000); return; }
+    setArmed(false);
+    const o: any[] = [];
+    for (const x of chosen) {
+      if (!x.fid) continue;
+      const sh = p.sequences.find((q) => q.id === x.q)!.shots.find((s) => s.id === x.s)!;
+      const list = x.end ? sh.endFrames ?? [] : sh.storyboard;
+      const rest = list.filter((f) => f.id !== x.fid);
+      o.push({ op: 'remove', path: ['sequences', x.q, 'shots', x.s, x.end ? 'endFrames' : 'storyboard', x.fid] });
+      o.push({ op: 'set', path: ['sequences', x.q, 'shots', x.s, x.end ? 'selectedEnd' : 'selectedFrame'], value: rest[0]?.id });
+    }
+    if (o.length) ops(o);
+    setSel(new Set());
+  };
   return (
-    <div className="filmstrip">
-      {frames.map((x) => (
-        <figure key={x.key} className={x.end ? 'end' : ''} onClick={() => select(x.q, x.s)} onDoubleClick={() => { select(x.q, x.s); setTab('shot'); }}>
-          {x.file ? <img src={media(p.id, x.file)} loading="lazy" /> : <div className="ph"><Clapperboard size={22} /></div>}
-          <span>{x.n}{x.end ? ' end' : ''}</span>
-        </figure>
-      ))}
-    </div>
+    <>
+      <div className={`fb-tools ${chosen.length ? 'on' : ''}`}>
+        {chosen.length ? <>
+          <b>{chosen.length} selected</b>
+          <Btn small kind="solid" onClick={() => regen('comfy')}><RefreshCw size={13} />New with FLUX</Btn>
+          <Btn small kind="solid" onClick={() => regen('grok')}><Sparkles size={13} />New with Grok Imagine</Btn>
+          <Btn small kind="danger" onClick={del}><Trash2 size={13} />{armed ? 'Click again to delete' : 'Delete'}</Btn>
+          <Btn small onClick={() => setSel(new Set())}>Clear</Btn>
+        </> : <span className="muted small">Click pictures to select them, then delete them or make new ones with FLUX or Grok Imagine. Double-click opens the shot.</span>}
+      </div>
+      <div className="filmstrip">
+        {pics.map((x) => (
+          <figure key={x.key} className={`${x.end ? 'end' : ''} ${sel.has(x.key) ? 'sel' : ''}`} onClick={() => toggle(x.key)} onDoubleClick={() => { select(x.q, x.s); setTab('shot'); }}>
+            {x.file ? <img src={media(p.id, x.file)} loading="lazy" /> : <div className="ph"><Clapperboard size={22} /></div>}
+            <span>{x.n}{x.end ? ' end' : ''}</span>
+            {busy(x) ? <i className="fb-busy">working…</i> : null}
+          </figure>
+        ))}
+      </div>
+    </>
   );
 }
 

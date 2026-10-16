@@ -386,3 +386,7 @@ img.paper { background: #fbfaf7; }
 .filmstrip figure.end span { color: var(--text-2); }
 .filmstrip figure:hover { outline: 2px solid var(--amber); }
 .film-del.armed { width: auto; padding: 0 8px; gap: 4px; background: var(--red, #c0392b); color: #fff; display: inline-flex; align-items: center; font-size: 12px; }
+.fb-tools { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 6px 0 8px; background: var(--panel); }
+.filmstrip figure.sel { outline: 3px solid var(--amber); outline-offset: -3px; }
+.filmstrip figure.sel::after { content: '✓'; position: absolute; right: 8px; top: 6px; background: var(--amber); color: #000; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; font-weight: 700; }
+.fb-busy { position: absolute; inset: auto 0 0 0; padding: 3px 6px; background: rgba(0,0,0,.65); color: var(--cyan); font-size: 11px; font-style: normal; }

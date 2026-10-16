@@ -130,6 +130,18 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     if (fix) prompt = `${prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true })}\nCorrection for this frame: ${fix}`;
     if (at === 'end') {
       // the end of a moving shot: follow the greybox's last frame, and the start frame for continuity
+      if (engine === 'grok') {
+        // Grok Imagine sees words only: the shot's prompt, told it is the end of the move
+        const text = endFramePrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), shot.camera.move);
+        const r = await grokStill(projectId, text, 'storyboard', ctx);
+        await mutate(projectId, (pp) => {
+          const s = findShot(pp, shotId).shot;
+          const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'grok+end', model: r.model, at: now(), fix };
+          s.endFrames = [fr, ...(s.endFrames ?? [])].slice(0, 12);
+          s.selectedEnd = fr.id;
+        });
+        return r;
+      }
       const endLayout = shot.greybox?.still?.replace(/\.png$/, '-end.png');
       if (!endLayout || !fs.existsSync(mediaPath(projectId, endLayout))) throw Error('render the greybox first: its last frame is the layout for the end frame');
       const start = shot.storyboard.find((f) => f.id === shot.selectedFrame) ?? shot.storyboard[0];
