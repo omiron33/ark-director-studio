@@ -15,6 +15,7 @@ export function Projects() {
   const [title, setTitle] = useState('');
   const [videoType, setVideoType] = useState('ultra-code');
   const [script, setScript] = useState('');
+  const [armed, setArmed] = useState<string | null>(null);
   const load = () => api.projects().then(setList).catch(() => {});
   const loadSongs = () => { setSongErr(''); api.songs().then(setSongs).catch((e) => { setSongs([]); setSongErr(e.message); }); };
   useEffect(() => { load(); loadSongs(); }, []);
@@ -45,9 +46,11 @@ export function Projects() {
                   <p>{p.sequences} sequences · {p.shots} shots · {p.takes} takes</p>
                   <p className="muted">{fmtTime(p.updated)}{p.ark ? ' · Ark linked' : ''}</p>
                 </div>
-                <Expert>
-                  <button className="icon-btn danger" title="Move to trash" onClick={async (e) => { e.stopPropagation(); if (confirm(`Move "${p.title}" to the studio trash?`)) { await run(() => api.remove(p.id), 'Moved to trash'); if (p.id === projectId) open(undefined); load(); } }}><Trash2 size={14} /></button>
-                </Expert>
+                {/* in every mode; a second click confirms (no browser dialog, which some windows block) */}
+                <button className={`icon-btn danger film-del ${armed === p.id ? 'armed' : ''}`} title={armed === p.id ? 'Click again to move it to the trash' : 'Move to trash'}
+                  onClick={async (e) => { e.stopPropagation(); if (armed !== p.id) { setArmed(p.id); setTimeout(() => setArmed((x) => (x === p.id ? null : x)), 4000); return; } setArmed(null); await run(() => api.remove(p.id), 'Moved to trash'); if (p.id === projectId) open(undefined); load(); }}>
+                  <Trash2 size={14} />{armed === p.id ? <span>Delete?</span> : null}
+                </button>
               </article>
             ))}
           </div>

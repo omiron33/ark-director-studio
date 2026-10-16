@@ -393,3 +393,4 @@ img.paper { background: #fbfaf7; }
 .fb-meta .muted { font-size: 11px; }
 .fb-lyric { margin: 4px 8px 0; font-size: 12px; color: var(--amber); font-style: italic; }
 .fb-action { margin: 4px 8px 8px; font-size: 12px; color: var(--text-2); }
+.film-del.armed { width: auto; padding: 0 8px; gap: 4px; background: var(--red, #c0392b); color: #fff; display: inline-flex; align-items: center; font-size: 12px; }
