@@ -197,6 +197,9 @@ app.get('/api/ark/stages', wrap(() => Object.fromEntries(Object.entries(ARK_STAG
 app.get('/api/ark/songs', wrap(() => listSongs()));
 app.post('/api/ark/import', wrap(async (req) => {
   const { songPath, title } = req.body;
+  // a song already open in the studio opens that film again instead of making a copy
+  const existing = store.listProjects().find((x) => x.ark?.songPath === songPath);
+  if (existing) return existing;
   const p = store.createProject({ title: title ?? path.posix.basename(songPath), kind: 'song' });
   await importSong(p, songPath);
   store.writeProject(p);

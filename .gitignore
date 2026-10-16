@@ -4,3 +4,6 @@ data/
 studio.config.json
 *.log
 .dashboard/
+# macOS metadata files
+._*
+.DS_Store
