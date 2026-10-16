@@ -1,6 +1,7 @@
 import { RefreshCw, Trash2, Clapperboard, ChevronLeft, ChevronRight, Plus, Images, Film, Link2, Link2Off, Sparkles, Layers } from 'lucide-react';
 import { api, media } from '../api';
-import { useStudio, useSelection } from '../store';
+import { useStudio, useSelection, tc } from '../store';
+import { useState } from 'react';
 import { Card, Btn, Edit, Select, Empty, Expert, Field, StatusTag, Cols, Col } from '../ui';
 import { CAMERA_PRESETS, type Shot, type Sequence, type Project } from '../../../shared/types';
 
@@ -75,16 +76,63 @@ function ShotCard({ p, q, s, i }: { p: Project; q: Sequence; s: Shot; i: number 
   );
 }
 
+// The whole film in story order on one page: every shot's start and end frame, its time in the song,
+// its lyric and what happens, under its sequence heading, so shots that don't follow are easy to spot.
+function FilmBoard({ p }: { p: Project }) {
+  const { select, setTab } = useStudio();
+  let n = 0;
+  return (
+    <div className="filmboard">
+      {p.sequences.map((q, qi) => (
+        <section key={q.id} className="fb-seq">
+          <h3><span className="num">{String(qi + 1).padStart(2, '0')}</span>{q.title}<em>{q.summary}</em></h3>
+          <div className="fb-row">
+            {q.shots.map((s) => {
+              n++;
+              const f = s.storyboard.find((x) => x.id === s.selectedFrame) ?? s.storyboard[0];
+              const e = s.endFrames?.find((x) => x.id === s.selectedEnd) ?? s.endFrames?.[0];
+              return (
+                <article key={s.id} className="fb-shot" onClick={() => select(q.id, s.id)} onDoubleClick={() => { select(q.id, s.id); setTab('shot'); }} title="Double-click to open the shot">
+                  <div className="fb-pics">
+                    {f ? <img src={media(p.id, f.file)} /> : <div className="ph"><Clapperboard size={22} /></div>}
+                    {e ? <img src={media(p.id, e.file)} /> : <div className="ph small">no end frame</div>}
+                  </div>
+                  <div className="fb-meta"><b>{String(n).padStart(2, '0')} · {s.title}</b><span className="muted">{tc(s.from)} · {s.duration}s · {CAMERA_PRESETS[s.camera.preset]?.label ?? s.camera.preset}</span></div>
+                  {s.lyric ? <p className="fb-lyric">{s.lyric}</p> : <p className="fb-lyric muted">(instrumental)</p>}
+                  <p className="fb-action clamp3">{s.action}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function Storyboard() {
   const { project: p, seq: q } = useSelection();
   const { ops, run, setTab } = useStudio();
+  const [whole, setWhole] = useState<boolean>(() => { try { return localStorage.getItem('ads.board.whole') !== '0'; } catch { return true; } });
+  const toggle = (v: boolean) => { setWhole(v); try { localStorage.setItem('ads.board.whole', v ? '1' : '0'); } catch {} };
   if (!p) return null;
+  if (whole) return (
+    <Cols className="g-board">
+      <Col w={1}>
+        <Card area="board" id="filmboard" title={`Whole film storyboard · ${p.sequences.reduce((k, x) => k + x.shots.length, 0)} shots`} icon={<Images size={15} />}
+          actions={<Btn small onClick={() => toggle(false)}><Layers size={13} />One sequence</Btn>}>
+          <FilmBoard p={p} />
+        </Card>
+      </Col>
+    </Cols>
+  );
   return (
     <Cols className="g-board">
       <Col fixed={300}><SequenceRail /></Col>
       <Col w={1}>
       <Card area="board" id="board" title={q ? q.title : 'Storyboard'} icon={<Images size={15} />}
         actions={q ? <>
+          <Btn small onClick={() => toggle(true)}><Images size={13} />Whole film</Btn>
           <Btn small onClick={() => run(() => api.post(p.id, 'storyboard-all', { sequenceId: q.id, missingOnly: true }), 'Frames queued for shots without one')}><Images size={13} />Frame the rest</Btn>
           <Btn small onClick={() => run(() => api.post(p.id, 'end-frames', { sequenceId: q.id, missingOnly: true }), 'End frames queued for moving shots')}><Film size={13} />End frames</Btn>
           <Expert><Btn small onClick={() => confirm('Make a new frame for every shot in this sequence?') && run(() => api.post(p.id, 'storyboard-all', { sequenceId: q.id, missingOnly: false }), 'New frames queued')}><RefreshCw size={13} />Redo all frames</Btn></Expert>
