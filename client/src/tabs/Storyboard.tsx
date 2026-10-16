@@ -76,35 +76,27 @@ function ShotCard({ p, q, s, i }: { p: Project; q: Sequence; s: Shot; i: number 
   );
 }
 
-// The whole film in story order on one page: every shot's start and end frame, its time in the song,
-// its lyric and what happens, under its sequence heading, so shots that don't follow are easy to spot.
+// The whole film as pictures only: every shot's key frames (start, then end) in story order, one
+// continuous strip, so a shot that doesn't follow from the one before is easy to see. A small number
+// in the corner says which shot it is; click to select, double-click to open it.
 function FilmBoard({ p }: { p: Project }) {
   const { select, setTab } = useStudio();
+  const frames: { key: string; file?: string; n: number; end: boolean; q: string; s: string }[] = [];
   let n = 0;
+  for (const q of p.sequences) for (const s of q.shots) {
+    n++;
+    const f = s.storyboard.find((x) => x.id === s.selectedFrame) ?? s.storyboard[0];
+    const e = s.endFrames?.find((x) => x.id === s.selectedEnd) ?? s.endFrames?.[0];
+    frames.push({ key: s.id + 's', file: f?.file, n, end: false, q: q.id, s: s.id });
+    if (e) frames.push({ key: s.id + 'e', file: e.file, n, end: true, q: q.id, s: s.id });
+  }
   return (
-    <div className="filmboard">
-      {p.sequences.map((q, qi) => (
-        <section key={q.id} className="fb-seq">
-          <h3><span className="num">{String(qi + 1).padStart(2, '0')}</span>{q.title}<em>{q.summary}</em></h3>
-          <div className="fb-row">
-            {q.shots.map((s) => {
-              n++;
-              const f = s.storyboard.find((x) => x.id === s.selectedFrame) ?? s.storyboard[0];
-              const e = s.endFrames?.find((x) => x.id === s.selectedEnd) ?? s.endFrames?.[0];
-              return (
-                <article key={s.id} className="fb-shot" onClick={() => select(q.id, s.id)} onDoubleClick={() => { select(q.id, s.id); setTab('shot'); }} title="Double-click to open the shot">
-                  <div className="fb-pics">
-                    {f ? <img src={media(p.id, f.file)} /> : <div className="ph"><Clapperboard size={22} /></div>}
-                    {e ? <img src={media(p.id, e.file)} /> : <div className="ph small">no end frame</div>}
-                  </div>
-                  <div className="fb-meta"><b>{String(n).padStart(2, '0')} · {s.title}</b><span className="muted">{tc(s.from)} · {s.duration}s · {CAMERA_PRESETS[s.camera.preset]?.label ?? s.camera.preset}</span></div>
-                  {s.lyric ? <p className="fb-lyric">{s.lyric}</p> : <p className="fb-lyric muted">(instrumental)</p>}
-                  <p className="fb-action clamp3">{s.action}</p>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+    <div className="filmstrip">
+      {frames.map((x) => (
+        <figure key={x.key} className={x.end ? 'end' : ''} onClick={() => select(x.q, x.s)} onDoubleClick={() => { select(x.q, x.s); setTab('shot'); }}>
+          {x.file ? <img src={media(p.id, x.file)} loading="lazy" /> : <div className="ph"><Clapperboard size={22} /></div>}
+          <span>{x.n}{x.end ? ' end' : ''}</span>
+        </figure>
       ))}
     </div>
   );
@@ -119,7 +111,7 @@ export function Storyboard() {
   if (whole) return (
     <Cols className="g-board">
       <Col w={1}>
-        <Card area="board" id="filmboard" title={`Whole film storyboard · ${p.sequences.reduce((k, x) => k + x.shots.length, 0)} shots`} icon={<Images size={15} />}
+        <Card area="board" id="filmboard" title={`${p.title} · whole film · ${p.sequences.reduce((k, x) => k + x.shots.length, 0)} shots`} icon={<Images size={15} />}
           actions={<Btn small onClick={() => toggle(false)}><Layers size={13} />One sequence</Btn>}>
           <FilmBoard p={p} />
         </Card>
