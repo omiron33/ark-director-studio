@@ -5,7 +5,7 @@ import { useStudio, useSelection } from '../store';
 import { Card, Btn, Empty, Media, Select, Field, Expert, StatusTag, Cols, Col } from '../ui';
 import type { Greybox, GreyboxActor, GreyboxProp, GreyboxLight } from '../../../shared/types';
 
-const POSES = ['stand', 'walk', 'run', 'kneel', 'sit', 'arms-up', 'reach', 'bow', 'lie', 'cower', 'stagger', 'point', 'prostrate'];
+const POSES = ['stand', 'walk', 'run', 'kneel', 'sit', 'arms-up', 'reach', 'bow', 'lie', 'cower', 'stagger', 'point', 'prostrate', 'arms-wide'];
 const KINDS = ['box', 'cylinder', 'wall', 'plane', 'arch', 'stairs', 'rock'];
 const fresh = (castIds: string[]): Greybox => ({
   actors: (castIds.length ? castIds : ['figure']).map((id, i, a) => ({ castId: id === 'figure' ? undefined : id, label: id, pose: 'stand', x: (i - (a.length - 1) / 2) * 1.2, z: 0, heading: 0 })),

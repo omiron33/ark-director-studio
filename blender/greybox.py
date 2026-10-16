@@ -156,6 +156,7 @@ POSES = {
     'stagger':  dict(lean=-18, arms=60, legs=25, crouch=0.08, fwd=0.3),
     'point':    dict(lean=0, arms=100, legs=0, crouch=0, fwd=0.7),
     'prostrate': dict(lean=80, arms=90, legs=0, crouch=0.7, fwd=0.6),
+    'arms-wide': dict(lean=12, arms=100, legs=0, crouch=0.1, fwd=0),  # both arms out and down to the sides
 }
 BUILD = {'slight': (0.85, 1.0), 'average': (1.0, 1.0), 'broad': (1.25, 1.0), 'gaunt': (0.78, 1.04), 'colossal': (1.35, 1.0)}
 
@@ -264,7 +265,7 @@ def actor(i, a):
     model = a.get('model') or {}
     crowd = int(model.get('crowd', 0) or 0)
     pose2 = a.get('pose2')
-    moving = a.get('x2') is not None or a.get('z2') is not None
+    moving = any(a.get(k) is not None for k in ('x2', 'z2', 'y2'))
     rnd = random.Random(1000 + i)
     members = [(0.0, 0.0, 0.0, a.get('pose', 'stand'), pose2)]
     if crowd > 1:
@@ -279,7 +280,7 @@ def actor(i, a):
         if crowd > 1:
             m['height'] = float(model.get('height', 1.7)) * rnd.uniform(0.82, 1.08)
         start = dict(a, x=a.get('x', 0) + dx, z=a.get('z', 0) + dz, heading=a.get('heading', 0) + dh)
-        end = dict(start, x=(a.get('x2', a.get('x', 0))) + dx, z=(a.get('z2', a.get('z', 0))) + dz)
+        end = dict(start, x=(a.get('x2', a.get('x', 0))) + dx, z=(a.get('z2', a.get('z', 0))) + dz, y=a.get('y2', a.get('y', 0)))
         poses = [(p1, F0, F1)] if not p2 or MODE != 'shot' else [(p1, F0, (F0 + F1) // 2), (p2, (F0 + F1) // 2 + 1, F1)]
         for pname, fa, fb in poses:
             root = figure(f"{a.get('label', 'actor')}-{n}-{pname}", m, pname)
