@@ -115,7 +115,7 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
   const refs = [...(lay ? [lay] : []), ...cast.map((x) => mediaPath(projectId, x.file))];
   const lines: string[] = [];
   if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
-  cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is ${x.name}: keep that face, hair, build and clothing exactly; ${x.name} appears exactly once.`));
+  cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference sheet of ${x.name} (several views of the same person plus a face close-up): keep that face, hair, build and clothing exactly; ${x.name} appears exactly once in the picture.`));
   if (cast.length) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
   lines.push('Sharp, high-detail photograph with natural skin and real pores, no crackle, mottling, cracked-paint texture or pixelation on faces; keep the world as dark, fiery and fantastical as described, with firelight, smoke, embers and cold blue light. No blood and no wounds on anyone.');
   if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push('Christ is solemn and grave, never smiling.');
@@ -149,7 +149,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       if (engine === 'grok') {
         // Grok Imagine sees words only: the shot's prompt, told it is the end of the move
         const text = endFramePrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), shot.camera.move);
-        const r = await grokStill(projectId, text, 'storyboard', ctx, shot.greybox?.still?.replace(/\.png$/, '-end.png'), stillRefs(p, shot, true).sheets);
+        const r = await grokStill(projectId, text, 'storyboard', ctx, shot.greybox?.still?.replace(/\.png$/, '-end.png'), stillRefs(p, shot, true, true).sheets);
         await mutate(projectId, (pp) => {
           const s = findShot(pp, shotId).shot;
           const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'grok+end', model: r.model, at: now(), fix };
@@ -184,7 +184,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const text = sk ? sketchPrompt(base, sk, follow) : engine === 'grok' ? base : refsPrompt(base, refs);
     const files = sk?.image ? [sk.image] : [refs.layout, ...refs.sheets.map((x) => x.file)].filter(Boolean) as string[];
     const r = engine === 'grok'
-      ? await grokStill(projectId, text, 'storyboard', ctx, sk ? undefined : shot.greybox?.still, sk ? [] : refs.sheets)
+      ? await grokStill(projectId, text, 'storyboard', ctx, sk ? undefined : shot.greybox?.still, sk ? [] : stillRefs(p, shot, true, true).sheets)
       : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files, sm);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
@@ -376,11 +376,11 @@ async function setTake(projectId: string, shotId: string, takeId: string, patch:
 
 // The pictures a storyboard still follows: the shot's greybox render for layout and camera, then the
 // sheets of the characters in it (at most four, the people the greybox actually places first).
-export function stillRefs(p: Project, shot: Shot, on = true) {
+export function stillRefs(p: Project, shot: Shot, on = true, sheetFirst = false) {
   if (!on) return { layout: undefined as string | undefined, sheets: [] as { name: string; file: string }[] };
   const placed = (shot.greybox?.actors ?? []).map((a) => a.castId).filter(Boolean) as string[];
   const ids = [...new Set([...placed, ...shot.castIds])];
-  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.portrait || c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: c!.portrait ?? c!.sheet! }));
+  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.portrait || c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: (sheetFirst ? c!.sheet ?? c!.portrait : c!.portrait ?? c!.sheet)! }));
   return { layout: shot.greybox?.still, sheets };
 }
 
