@@ -391,3 +391,8 @@ img.paper { background: #fbfaf7; }
 .filmstrip figure.sel { outline: 3px solid var(--amber); outline-offset: -3px; }
 .filmstrip figure.sel::after { content: '✓'; position: absolute; right: 8px; top: 6px; background: var(--amber); color: #000; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; font-weight: 700; }
 .fb-busy { position: absolute; inset: auto 0 0 0; padding: 3px 6px; background: rgba(0,0,0,.65); color: var(--cyan); font-size: 11px; font-style: normal; }
+
+.fb-meta { position: absolute; inset: auto 0 0 0; display: flex; flex-direction: column; gap: 1px; padding: 4px 8px 5px; background: linear-gradient(transparent, rgba(0,0,0,.85) 30%); color: var(--text-2); font: 400 10.5px/1.35 var(--body); pointer-events: none; }
+.fb-meta b { color: var(--text); font-weight: 600; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fb-meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fb-meta .dim { opacity: .6; }

@@ -3,7 +3,7 @@ import { api, media } from '../api';
 import { useStudio, useSelection, tc } from '../store';
 import { useState } from 'react';
 import { Card, Btn, Edit, Select, Empty, Expert, Field, StatusTag, Cols, Col, Segmented } from '../ui';
-import { CAMERA_PRESETS, STILL_MODELS, withRender, type Shot, type Sequence, type Project, type StillModel } from '../../../shared/types';
+import { CAMERA_PRESETS, STILL_MODELS, withRender, type Shot, type Sequence, type Project, type StillModel, type StoryboardFrame } from '../../../shared/types';
 
 export function SequenceRail() {
   const { project: p, sequenceId, select } = useStudio();
@@ -84,15 +84,15 @@ function FilmBoard({ p }: { p: Project }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [armed, setArmed] = useState(false);
   const [model, setModel] = useState<StillModel>(withRender(p.render).stills);
-  type Pic = { key: string; fid?: string; file?: string; n: number; end: boolean; q: string; s: string };
+  type Pic = { key: string; fid?: string; file?: string; n: number; end: boolean; q: string; s: string; fr?: StoryboardFrame; title: string; seq: string; count: number };
   const pics: Pic[] = [];
   let n = 0;
   for (const q of p.sequences) for (const s of q.shots) {
     n++;
     const f = s.storyboard.find((x) => x.id === s.selectedFrame) ?? s.storyboard[0];
     const e = s.endFrames?.find((x) => x.id === s.selectedEnd) ?? s.endFrames?.[0];
-    pics.push({ key: s.id + ':s', fid: f?.id, file: f?.file, n, end: false, q: q.id, s: s.id });
-    if (e) pics.push({ key: s.id + ':e', fid: e.id, file: e.file, n, end: true, q: q.id, s: s.id });
+    pics.push({ key: s.id + ':s', fid: f?.id, file: f?.file, n, end: false, q: q.id, s: s.id, fr: f, title: s.title, seq: q.title, count: s.storyboard.length });
+    if (e) pics.push({ key: s.id + ':e', fid: e.id, file: e.file, n, end: true, q: q.id, s: s.id, fr: e, title: s.title, seq: q.title, count: s.endFrames?.length ?? 0 });
   }
   const chosen = pics.filter((x) => sel.has(x.key));
   const busy = (x: Pic) => jobs.some((j) => j.ref?.shotId === x.s && ['queued', 'waiting-gpu', 'running'].includes(j.status));
@@ -134,11 +134,27 @@ function FilmBoard({ p }: { p: Project }) {
           <figure key={x.key} className={`${x.end ? 'end' : ''} ${sel.has(x.key) ? 'sel' : ''}`} onClick={() => toggle(x.key)} onDoubleClick={() => { select(x.q, x.s); setTab('shot'); }}>
             {x.file ? <img src={media(p.id, x.file)} loading="lazy" /> : <div className="ph"><Clapperboard size={22} /></div>}
             <span>{x.n}{x.end ? ' end' : ''}</span>
-            {busy(x) ? <i className="fb-busy">working…</i> : null}
+            {busy(x) ? <i className="fb-busy">working…</i> : sel.has(x.key) ? <FrameMeta x={x} /> : null}
           </figure>
         ))}
       </div>
     </>
+  );
+}
+
+// Small print on a selected picture: which shot it is and how it was made.
+function FrameMeta({ x }: { x: { fr?: StoryboardFrame; title: string; seq: string; n: number; end: boolean; count: number; file?: string } }) {
+  const f = x.fr;
+  const when = f?.at ? new Date(f.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  const how = !f ? 'no frame yet' : [f.model ?? f.engine, f.engine && f.model && f.engine !== f.model ? f.engine : '', f.seed != null ? `seed ${f.seed}` : '', f.refs?.length ? `${f.refs.length} ref${f.refs.length > 1 ? 's' : ''}` : '', f.sketchId ? 'from sketch' : '', when].filter(Boolean).join(' · ');
+  return (
+    <figcaption className="fb-meta" title={f?.prompt}>
+      <b>{x.n}{x.end ? ' end' : ''} · {x.title}</b>
+      <span>{x.seq} · {x.count} {x.end ? 'end ' : ''}frame{x.count === 1 ? '' : 's'}</span>
+      <span>{how}</span>
+      {f?.fix ? <span>fix: {f.fix}</span> : null}
+      {f?.file ? <span className="dim">{f.file.split('/').pop()}</span> : null}
+    </figcaption>
   );
 }
 
