@@ -8,7 +8,7 @@ import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousS
 import { claimGpu, type GpuLease } from './gpuq.ts';
 import * as comfy from './comfy.ts';
 import { h3Graph, h3Len, imageGraph, ASPECTS } from './workflows.ts';
-import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt } from './prompts.ts';
+import { shotPrompt, sheetPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt, endFramePrompt } from './prompts.ts';
 import { lastFrame, assemble, probe } from './media.ts';
 import { renderGreybox, defaultGreybox, renderModel } from './blender.ts';
 import { grokGenerate } from './grok.ts';
@@ -108,9 +108,27 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
+    if (at === 'end') {
+      // the end of a moving shot: follow the greybox's last frame, and the start frame for continuity
+      const endLayout = shot.greybox?.still?.replace(/\.png$/, '-end.png');
+      if (!endLayout || !fs.existsSync(mediaPath(projectId, endLayout))) throw Error('render the greybox first: its last frame is the layout for the end frame');
+      const start = shot.storyboard.find((f) => f.id === shot.selectedFrame) ?? shot.storyboard[0];
+      const refs = { ...stillRefs(p, shot, true), layout: endLayout };
+      let text = endFramePrompt(refsPrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), refs), shot.camera.move);
+      const files = [endLayout, ...refs.sheets.map((x) => x.file)];
+      if (start) { files.push(start.file); text += `\nImage ${files.length} is the shot's first frame: keep its place, light, colours and people exactly; only the viewpoint and poses move on.`; }
+      const r = await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
+      await mutate(projectId, (pp) => {
+        const s = findShot(pp, shotId).shot;
+        const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'comfy+end', seed: r.seed, at: now(), refs: files };
+        s.endFrames = [fr, ...(s.endFrames ?? [])].slice(0, 12);
+        s.selectedEnd = fr.id;
+      });
+      return r;
+    }
     const sk = sketchId ? shot.sketches?.find((x) => x.id === sketchId) : undefined;
     if (sketchId && !sk?.image) throw Error('that sketch has no saved picture; save the sketch first');
     const base = prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true });
@@ -334,7 +352,9 @@ export function resolveTakeInputs(p: Project, shot: Shot, opts: any = {}) {
   // sheets ride along on every take when the film needs cohesion; otherwise only locked ones
   const sheets = castIds.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.sheet && (cohesive || c.locked)).map((c) => c!.sheet!) as string[];
   const guide = opts.guide === false ? undefined : shot.greybox?.video;
-  const end = opts.endFrame as string | undefined;
+  // a moving shot ends on its chosen end frame unless the take says otherwise
+  const endFr = shot.endFrames?.find((f) => f.id === shot.selectedEnd) ?? shot.endFrames?.[0];
+  const end = opts.end === 'none' ? undefined : (opts.endFrame as string | undefined) ?? endFr?.file;
   return { start, startWhy: start ? startWhy : 'none', look, sheets, guide, end };
 }
 

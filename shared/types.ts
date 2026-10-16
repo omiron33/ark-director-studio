@@ -181,6 +181,8 @@ export interface Shot {
   greybox?: Greybox;
   storyboard: StoryboardFrame[];
   selectedFrame?: string;
+  endFrames?: StoryboardFrame[]; // where a moving shot ends: painted from the greybox's last frame, anchored as the take's end
+  selectedEnd?: string;
   sketches?: Sketch[];      // hand-drawn stick-figure layouts, newest first
   takes: Take[];
   selectedTake?: string;

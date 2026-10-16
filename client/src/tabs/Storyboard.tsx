@@ -41,6 +41,7 @@ function ShotCard({ p, q, s, i }: { p: Project; q: Sequence; s: Shot; i: number 
       <div className="shot-frame">
         {take?.file ? <video src={media(p.id, take.file)} muted loop onMouseEnter={(e) => e.currentTarget.play()} onMouseLeave={(e) => e.currentTarget.pause()} poster={media(p.id, frame?.file)} /> : frame ? <img src={media(p.id, frame.file)} /> : <div className="ph"><Clapperboard size={28} /></div>}
         <span className="shot-no">{String(i + 1).padStart(2, '0')}</span>
+        {(() => { const e = s.endFrames?.find((f) => f.id === s.selectedEnd) ?? s.endFrames?.[0]; return e ? <img className="shot-end" title="Where the camera move ends" src={media(p.id, e.file)} /> : null; })()}
         <span className="shot-dur">{s.duration}s</span>
         {s.chainFromPrevious && q.continuity.chain && i > 0 ? <span className="shot-chain" title="Starts from the previous shot's last frame"><Link2 size={12} /></span> : null}
         {busy ? <span className="shot-busy"><StatusTag s={busy.status} /></span> : take ? <span className="shot-take">take ✓</span> : null}
@@ -85,6 +86,7 @@ export function Storyboard() {
       <Card area="board" id="board" title={q ? q.title : 'Storyboard'} icon={<Images size={15} />}
         actions={q ? <>
           <Btn small onClick={() => run(() => api.post(p.id, 'storyboard-all', { sequenceId: q.id, missingOnly: true }), 'Frames queued for shots without one')}><Images size={13} />Frame the rest</Btn>
+          <Btn small onClick={() => run(() => api.post(p.id, 'end-frames', { sequenceId: q.id, missingOnly: true }), 'End frames queued for moving shots')}><Film size={13} />End frames</Btn>
           <Expert><Btn small onClick={() => confirm('Make a new frame for every shot in this sequence?') && run(() => api.post(p.id, 'storyboard-all', { sequenceId: q.id, missingOnly: false }), 'New frames queued')}><RefreshCw size={13} />Redo all frames</Btn></Expert>
           <Btn small kind="solid" onClick={() => run(() => api.post(p.id, 'takes-sequence', { sequenceId: q.id, missingOnly: true }), 'Takes queued in film order')}><Film size={13} />Takes for the sequence</Btn>
           <Btn small onClick={() => { run(() => api.post(p.id, 'assemble', { sequenceId: q.id }), 'Assembling'); setTab('timeline'); }}>Assemble</Btn>

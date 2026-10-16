@@ -70,6 +70,22 @@ app.post('/api/projects/:id/storyboard', wrap((req) => {
   const { shot, seq } = store.findShot(p, shotId);
   return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt, refs }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
 }));
+// End frames for every shot whose camera moves (greybox start and end marks differ), in one sequence or the film.
+app.post('/api/projects/:id/end-frames', wrap((req) => {
+  const p = store.readProject(P(req));
+  const { sequenceId, missingOnly = true, shotIds } = req.body as { sequenceId?: string; missingOnly?: boolean; shotIds?: string[] };
+  let n = 0;
+  for (const q of p.sequences) if (!sequenceId || q.id === sequenceId) for (const s of q.shots) {
+    if (shotIds && !shotIds.includes(s.id)) continue;
+    const c = s.greybox?.camera;
+    const moves = !!c && (JSON.stringify(c.from) !== JSON.stringify(c.to) || !!(c as any).look2);
+    if (!shotIds && !moves) continue;
+    if (missingOnly && s.endFrames?.length) continue;
+    jobs.enqueue('storyboard', `${p.title}: ${s.title} end frame`, { projectId: p.id, shotId: s.id, at: 'end' }, { projectId: p.id, gpu: true, ref: { shotId: s.id, sequenceId: q.id } });
+    n++;
+  }
+  return { queued: n };
+}));
 app.post('/api/projects/:id/storyboard-all', wrap((req) => {
   const { sequenceId, engine = 'comfy', missingOnly = true, refs = true } = req.body;
   const p = store.readProject(P(req));

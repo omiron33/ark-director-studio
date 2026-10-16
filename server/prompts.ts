@@ -32,6 +32,11 @@ ${sk.note ? `What the sketch shows: ${sk.note}\n` : ''}
 ${base}`;
 }
 
+// The frame a moving shot ends on: the same moment after the camera (and the people) have moved.
+export function endFramePrompt(base: string, move?: string) {
+  return `This is the LAST frame of the shot, after the camera move${move ? ` (${move})` : ''} has finished: the same place, light and people as the shot's first frame, now seen from where the camera ends.\n\n${base}`;
+}
+
 // A storyboard still that follows the shot's greybox and its characters' sheets.
 export function refsPrompt(base: string, refs: { layout?: string; sheets: { name: string }[] }) {
   if (!refs.layout && !refs.sheets.length) return base;
