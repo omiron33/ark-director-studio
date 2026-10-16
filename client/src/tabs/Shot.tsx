@@ -3,7 +3,7 @@ import { Film, Settings2, Play, Trash2, Star, RefreshCw, Sparkles, X, ListVideo,
 import { api, media } from '../api';
 import { useStudio, useSelection, fmtTime } from '../store';
 import { Card, Btn, Edit, Select, Field, Segmented, Expert, Basic, Empty, Media, StatusTag, Cols, Col } from '../ui';
-import { CAMERA_PRESETS, cohesionOn } from '../../../shared/types';
+import { CAMERA_PRESETS, STILL_MODELS, cohesionOn, withRender } from '../../../shared/types';
 
 export function ShotTab() {
   const { project: p, seq: q, shot: s } = useSelection();
@@ -111,6 +111,7 @@ export function ShotTab() {
               <Field label="Source"><Select value={s.source} onChange={(v) => set(['source'], v)} options={[['h3', 'H3 live action'], ['grok', 'Grok Imagine'], ['code', 'Ark code'], ['still', 'Still']]} /></Field>
               <Field label="Look"><Select value={s.lookId ?? ''} onChange={(v) => set(['lookId'], v || undefined)} options={[['', 'Sequence look'], ...p.looks.map((l) => [l.id, l.name] as [string, string])]} /></Field>
             </div>
+            <Field label="Still frames" hint="this shot only"><Select value={s.stills ?? ''} onChange={(v) => set(['stills'], v || undefined)} options={[['', `Film setting (${STILL_MODELS[withRender(p.render).stills].label})`], ['quality', `Quality · ${STILL_MODELS.quality.model}`], ['speed', `Speed · ${STILL_MODELS.speed.model}`]]} /></Field>
             <Field label="Dialogue"><Edit multiline rows={2} value={s.dialogue ?? ''} onSave={(v) => set(['dialogue'], v || undefined)} /></Field>
           </Expert>
           <Field label="Characters">

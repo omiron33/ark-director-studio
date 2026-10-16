@@ -141,3 +141,25 @@ test('greybox spec builds the sequence set and each character model; stills foll
   assert.match(text, /Image 1 is a plain grey Blender layout/);
   assert.match(text, /Image 2 shows Christ: .*appears exactly once/);
 });
+
+test('stills default to quality (FLUX 3 Klein); a shot can override the film', async () => {
+  const { stillModelOf } = await import('../shared/types.ts');
+  assert.equal(withRender(undefined).stills, 'quality');
+  assert.equal(stillModelOf({ render: { look: 'live' } as any }), 'quality'); // projects saved before the setting existed
+  assert.equal(stillModelOf({ render: withRender({ stills: 'speed' }) }), 'speed');
+  assert.equal(stillModelOf({ render: withRender({ stills: 'speed' }) }, { stills: 'quality' }), 'quality');
+});
+
+test('the Klein graph maps Image N to its reference names and skips references when there are none', async () => {
+  const { kleinGraph, kleinPrompt } = await import('../server/workflows.ts');
+  assert.equal(kleinPrompt('Image 1 is the layout. Image 2 shows Adam.'), '<ref_image_0> is the layout. <ref_image_1> shows Adam.');
+  const g: any = kleinGraph({ prompt: 'Image 1 is the layout.', seed: 1, prefix: 'x', refs: ['a.png', 'b.png'] });
+  assert.equal(g[1].inputs.unet_name, 'flux3_image_klein_sd_int8_convrot.safetensors');
+  assert.equal(g[4].inputs.text, '<ref_image_0> is the layout.');
+  assert.deepEqual(g[10].inputs['images.image1'], ['21', 0]);
+  assert.deepEqual(g[7].inputs.positive, ['10', 0]);
+  assert.equal(g[7].inputs.steps, 16);
+  const plain: any = kleinGraph({ prompt: 'p', seed: 1, prefix: 'x' });
+  assert.equal(plain[10], undefined);
+  assert.deepEqual(plain[7].inputs.positive, ['4', 0]);
+});

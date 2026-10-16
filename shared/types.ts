@@ -15,6 +15,8 @@ export type Mode = 'basic' | 'expert';
 //   mixed      the music-video setting: code shots cut with generated H3 shots.
 //   live       live action: H3 from prompts, looks, character sheets and Blender greyboxes.
 export type RenderLook = 'code' | 'photoreal' | 'mixed' | 'live';
+// Still frames from ComfyUI (storyboard frames, sheets, looks): quality is FLUX 3 Image Klein, speed is Qwen-Image 2.1.
+export type StillModel = 'quality' | 'speed';
 export type Tier = 'fast' | 'standard' | 'premium' | 'ultra';
 export interface RenderSetup {
   look: RenderLook;
@@ -30,6 +32,7 @@ export interface RenderSetup {
     steps: number;
     proxyBlur: number;
   };
+  stills: StillModel;                // ComfyUI still frames: quality (FLUX 3 Klein, the default) or speed (Qwen-Image)
   popcam: boolean;                   // music video: the pop-video camera that plays the track
   local: boolean;                    // --local: code scenes render on the Mac only
 }
@@ -37,7 +40,7 @@ export interface RenderSetup {
 export const DEFAULT_RENDER: RenderSetup = {
   look: 'code', tier: 'ultra', resolution: '1920x1080', words: 'in-scene', cohesion: 'auto',
   photoreal: { chain: 'bridges', styleRef: 'none', tuck: true, keep: 5, steps: 20, proxyBlur: 0 },
-  popcam: true, local: false,
+  stills: 'quality', popcam: true, local: false,
 };
 
 // One-click video types for Basic mode. Each sets the kind and the render setup together.
@@ -53,6 +56,11 @@ export const VIDEO_TYPES: { id: string; label: string; blurb: string; kind: Film
 ];
 
 export const withRender = (r?: Partial<RenderSetup>): RenderSetup => ({ ...DEFAULT_RENDER, ...(r ?? {}), photoreal: { ...DEFAULT_RENDER.photoreal, ...(r?.photoreal ?? {}) } });
+export const STILL_MODELS: Record<StillModel, { label: string; model: string; blurb: string }> = {
+  quality: { label: 'Quality', model: 'FLUX 3 Klein', blurb: 'FLUX 3 Image Klein int8, 16 steps: sharper, more lifelike faces and hands.' },
+  speed: { label: 'Speed', model: 'Qwen-Image', blurb: 'Qwen-Image 2.1 int8, 20 steps: quicker on the 12 GB card.' },
+};
+export const stillModelOf = (p: { render?: Partial<RenderSetup> }, shot?: { stills?: StillModel }): StillModel => shot?.stills ?? withRender(p.render).stills;
 // Shot cohesion (character sheets on every take, one continuity plan, chaining from the last frame)
 // is what generated pictures need. Pure code films keep it off unless asked.
 export const cohesionOn = (r?: Partial<RenderSetup>) => { const x = withRender(r); return x.cohesion === 'on' || (x.cohesion === 'auto' && x.look !== 'code'); };
@@ -144,7 +152,7 @@ export interface Greybox {
   still?: string;
 }
 
-export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string; refs?: string[]; fix?: string }
+export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; model?: string; seed?: number; at: string; sketchId?: string; refs?: string[]; fix?: string }
 
 export type TakeStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface Take {
@@ -188,6 +196,7 @@ export interface Shot {
   takes: Take[];
   selectedTake?: string;
   chainFromPrevious: boolean; // start this take from the previous shot's last frame
+  stills?: StillModel;      // this shot's still frames, when they differ from the film's setting
   notes?: string;
 }
 

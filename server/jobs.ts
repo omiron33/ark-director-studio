@@ -7,15 +7,15 @@ import { config } from './config.ts';
 import { uid, now, mutate, readProject, findShot, mediaPath, mediaDir, previousShot, newSequence, newShot, shotDefaults } from './store.ts';
 import { claimGpu, type GpuLease } from './gpuq.ts';
 import * as comfy from './comfy.ts';
-import { h3Graph, h3Len, imageGraph, ASPECTS } from './workflows.ts';
+import { h3Graph, h3Len, imageGraph, kleinGraph, ASPECTS } from './workflows.ts';
 import { shotPrompt, sheetPrompt, portraitPrompt, lookPrompt, storyParsePrompt, sequenceReviewPrompt, sketchPrompt, refsPrompt, endFramePrompt } from './prompts.ts';
 import { lastFrame, assemble, probe } from './media.ts';
 import { renderGreybox, defaultGreybox, renderModel } from './blender.ts';
 import { grokGenerate } from './grok.ts';
 import { runAgent, extractJson } from './agents.ts';
 import { runStage, pullSceneClip, ARK_STAGES } from './ark.ts';
-import type { Job, JobKind, Project, Take, AgentId, Shot } from '../shared/types.ts';
-import { CAMERA_PRESETS, cohesionOn } from '../shared/types.ts';
+import type { Job, JobKind, Project, Take, AgentId, Shot, StillModel } from '../shared/types.ts';
+import { CAMERA_PRESETS, cohesionOn, stillModelOf, STILL_MODELS } from '../shared/types.ts';
 
 const FILE = path.join(config.dataDir, 'jobs.json');
 const jobs: Job[] = (() => { try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { return []; } })();
@@ -88,35 +88,39 @@ type Ctx = { signal: AbortSignal; lease: GpuLease | null; log: (l: string) => vo
 const seed = () => Math.floor(Math.random() * 2 ** 31);
 const rel = (projectId: string, abs: string) => path.relative(mediaDir(projectId), abs).split(path.sep).join('/');
 
-async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9', refFiles: string[] = []) {
+async function comfyStill(projectId: string, prompt: string, sub: string, ctx: Ctx, aspect = '16:9', refFiles: string[] = [], stills: StillModel = 'quality') {
   const [width, height] = ASPECTS[aspect] ?? ASPECTS['16:9'];
   const s = seed();
   const refs = await Promise.all(refFiles.map((f, i) => comfy.upload(mediaPath(projectId, f), `ads-${projectId}-ref${i}-${path.basename(f)}`)));
-  ctx.log(`Qwen-Image ${width}x${height}, seed ${s}${refs.length ? `, with ${refs.length} reference image${refs.length > 1 ? 's' : ''}` : ''}`);
-  const r = await comfy.run(imageGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}`, refs }), { signal: ctx.signal, onBeat: (sec) => ctx.lease?.progress(`${sec}s`) });
+  const model = STILL_MODELS[stills].model;
+  ctx.log(`${model} ${width}x${height}, seed ${s}${refs.length ? `, with ${refs.length} reference image${refs.length > 1 ? 's' : ''}` : ''}`);
+  const graph = stills === 'speed' ? imageGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}`, refs }) : kleinGraph({ prompt, seed: s, width, height, prefix: `ark-studio/${projectId}`, refs });
+  const r = await comfy.run(graph, { signal: ctx.signal, onBeat: (sec) => ctx.lease?.progress(`${sec}s`) });
   const o = r.outputs.find((x) => /\.(png|jpe?g|webp)$/i.test(x.filename));
   if (!o) throw Error('ComfyUI returned no image');
   const dest = mediaPath(projectId, `${sub}/${Date.now()}-${s}.png`);
   await comfy.download(o, dest);
   ctx.log(`saved ${path.basename(dest)} in ${r.seconds}s`);
-  return { file: rel(projectId, dest), seed: s };
+  return { file: rel(projectId, dest), seed: s, model };
 }
 
 async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx) {
   const [f] = await grokGenerate({ prompt, kind: 'image', outDir: mediaPath(projectId, sub), onLine: ctx.log });
-  return { file: rel(projectId, f), seed: undefined };
+  return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at, fix, refFiles }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at, fix, refFiles, stills }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
+    // the job's own choice, else the shot's override, else the film's setting (quality by default)
+    const sm: StillModel = stills === 'speed' || stills === 'quality' ? stills : stillModelOf(p, shot);
     if (Array.isArray(refFiles) && refFiles.length) {
       // a frame painted from chosen pictures (a blend): the prompt says what each image is for
-      const r = await comfyStill(projectId, String(prompt ?? ''), 'storyboard', ctx, p.aspect, refFiles.slice(0, 8));
+      const r = await comfyStill(projectId, String(prompt ?? ''), 'storyboard', ctx, p.aspect, refFiles.slice(0, 8), sm);
       await mutate(projectId, (pp) => {
         const s = findShot(pp, shotId).shot;
-        const fr = { id: uid('f'), file: r.file, prompt: String(prompt ?? ''), engine: 'comfy+blend', seed: r.seed, at: now(), refs: refFiles };
+        const fr = { id: uid('f'), file: r.file, prompt: String(prompt ?? ''), engine: 'comfy+blend', model: r.model, seed: r.seed, at: now(), refs: refFiles };
         s.storyboard.unshift(fr);
         s.selectedFrame = fr.id;
       });
@@ -134,10 +138,10 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       const files = [endLayout, ...refs.sheets.map((x) => x.file)];
       // the first frame is not passed as an image: it pins the composition and the move disappears. Its words carry the continuity.
       if (start) text += `\nKeep the same place, light, colours and people as the shot's first frame, but seen from where the camera has moved to (Image 1), with the framing clearly different from the start.`;
-      const r = await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
+      const r = await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files, sm);
       await mutate(projectId, (pp) => {
         const s = findShot(pp, shotId).shot;
-        const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'comfy+end', seed: r.seed, at: now(), refs: files, fix };
+        const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'comfy+end', model: r.model, seed: r.seed, at: now(), refs: files, fix };
         s.endFrames = [fr, ...(s.endFrames ?? [])].slice(0, 12);
         s.selectedEnd = fr.id;
       });
@@ -153,10 +157,10 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const files = sk?.image ? [sk.image] : [refs.layout, ...refs.sheets.map((x) => x.file)].filter(Boolean) as string[];
     const r = engine === 'grok'
       ? await grokStill(projectId, text, 'storyboard', ctx)
-      : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
+      : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files, sm);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
-      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : files.length ? `${engine}+refs` : engine, seed: r.seed, at: now(), sketchId: sk?.id, refs: engine === 'grok' ? undefined : files, fix };
+      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : files.length ? `${engine}+refs` : engine, model: r.model, seed: r.seed, at: now(), sketchId: sk?.id, refs: engine === 'grok' ? undefined : files, fix };
       s.storyboard.unshift(fr);
       s.selectedFrame = fr.id;
     });
@@ -169,12 +173,12 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     if (!c) throw Error('no such character');
     if (portrait) {
       if (!c.sheet) throw Error('make the sheet first');
-      const r = await comfyStill(projectId, portraitPrompt(p, c.name, c.description), 'cast', ctx, '9:16', [c.sheet]);
+      const r = await comfyStill(projectId, portraitPrompt(p, c.name, c.description), 'cast', ctx, '9:16', [c.sheet], stillModelOf(p));
       await mutate(projectId, (pp) => { pp.cast.find((x) => x.id === castId)!.portrait = r.file; });
       return r;
     }
     const text = sheetPrompt(p, c.name, c.description);
-    const r = engine === 'grok' ? await grokStill(projectId, text, 'cast', ctx) : await comfyStill(projectId, text, 'cast', ctx, '16:9');
+    const r = engine === 'grok' ? await grokStill(projectId, text, 'cast', ctx) : await comfyStill(projectId, text, 'cast', ctx, '16:9', [], stillModelOf(p));
     await mutate(projectId, (pp) => {
       const cc = pp.cast.find((x) => x.id === castId)!;
       if (cc.sheet) cc.sheets = [cc.sheet, ...(cc.sheets ?? [])].slice(0, 12);
@@ -187,7 +191,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const p = readProject(projectId);
     const l = p.looks.find((x) => x.id === lookId);
     if (!l) throw Error('no such look');
-    const r = engine === 'grok' ? await grokStill(projectId, lookPrompt(p, l.prompt), 'looks', ctx) : await comfyStill(projectId, lookPrompt(p, l.prompt), 'looks', ctx, p.aspect);
+    const r = engine === 'grok' ? await grokStill(projectId, lookPrompt(p, l.prompt), 'looks', ctx) : await comfyStill(projectId, lookPrompt(p, l.prompt), 'looks', ctx, p.aspect, [], stillModelOf(p));
     await mutate(projectId, (pp) => { pp.looks.find((x) => x.id === lookId)!.image = r.file; });
     return r;
   },

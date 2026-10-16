@@ -100,7 +100,7 @@ export function h3Graph(p: H3Params) {
   return g;
 }
 
-// Stills (storyboard frames, character sheets, looks): Qwen-Image 2.1, as the engine's image command uses.
+// Stills at the speed setting (storyboard frames, character sheets, looks): Qwen-Image 2.1, as the engine's image command uses.
 // `refs` are uploaded images the text encoder sees (a hand sketch to follow, for one).
 export function imageGraph({ prompt, negative = 'text, watermark, logo, blurry, deformed, extra fingers', seed, width = 1344, height = 768, steps = 20, prefix, refs = [] }: { prompt: string; negative?: string; seed: number; width?: number; height?: number; steps?: number; prefix: string; refs?: string[] }) {
   const g: Record<string, any> = {
@@ -114,6 +114,31 @@ export function imageGraph({ prompt, negative = 'text, watermark, logo, blurry, 
     9: { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: prefix } },
   };
   refs.forEach((r, i) => { g[20 + i] = { class_type: 'LoadImage', inputs: { image: r } }; });
+  return g;
+}
+
+// Stills at the quality setting: FLUX 3 Image Klein (step-distilled int8, 16 steps, no guidance).
+// Reference images go through ReferenceMultiLatent, which names them <ref_image_0>, <ref_image_1>...
+// in the prompt, so the studio's "Image 1..N" wording is mapped onto those names.
+export const kleinPrompt = (prompt: string) => prompt.replace(/\bImage (\d+)\b/g, (_, n) => `<ref_image_${Number(n) - 1}>`);
+
+export function kleinGraph({ prompt, seed, width = 1344, height = 768, steps = 16, prefix, refs = [] }: { prompt: string; seed: number; width?: number; height?: number; steps?: number; prefix: string; refs?: string[] }) {
+  const g: Record<string, any> = {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: 'flux3_image_klein_sd_int8_convrot.safetensors', weight_dtype: 'default' } },
+    2: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_4b_int8_convrot.safetensors', type: 'flux3', device: 'default' } },
+    3: { class_type: 'VAELoader', inputs: { vae_name: 'flux2-vae.safetensors' } },
+    4: { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: refs.length ? kleinPrompt(prompt) : prompt } },
+    5: { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['4', 0] } },
+    6: { class_type: 'EmptyFlux2LatentImage', inputs: { width, height, batch_size: 1 } },
+    7: { class_type: 'KSampler', inputs: { model: ['1', 0], positive: refs.length ? ['10', 0] : ['4', 0], negative: refs.length ? ['10', 1] : ['5', 0], latent_image: ['6', 0], seed, steps, cfg: 1.0, sampler_name: 'euler', scheduler: 'simple', denoise: 1.0 } },
+    8: { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
+    9: { class_type: 'SaveImage', inputs: { images: ['8', 0], filename_prefix: prefix } },
+  };
+  if (refs.length) {
+    // every reference rides on both the positive and the negative, as BFL's reference pipeline does
+    g[10] = { class_type: 'ReferenceMultiLatent', inputs: { positive: ['4', 0], negative: ['5', 0], vae: ['3', 0], resolution: 'resize', 'resolution.megapixels': 1.0, ...Object.fromEntries(refs.map((_, i) => [`images.image${i}`, [String(20 + i), 0]])) } };
+    refs.forEach((r, i) => { g[20 + i] = { class_type: 'LoadImage', inputs: { image: r } }; });
+  }
   return g;
 }
 

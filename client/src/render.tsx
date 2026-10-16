@@ -3,7 +3,7 @@
 import { Clapperboard } from 'lucide-react';
 import { useStudio } from './store';
 import { Card, Field, Segmented, Select, Expert } from './ui';
-import { VIDEO_TYPES, withRender, cohesionOn, videoTypeOf, type Project, type RenderSetup } from '../../shared/types';
+import { VIDEO_TYPES, STILL_MODELS, withRender, cohesionOn, videoTypeOf, type Project, type RenderSetup, type StillModel } from '../../shared/types';
 
 export function VideoTypePicker({ value, onPick, compact }: { value?: string; onPick: (id: string) => void; compact?: boolean }) {
   return (
@@ -34,6 +34,7 @@ export function RenderCard({ p, grow = 1 }: { p: Project; grow?: number }) {
       actions={<span className={`pill ${cohesive ? 'pill-amber' : 'pill-cyan'}`} title="Character sheets on every take, one continuity plan per sequence, each take starting from the last frame">{cohesive ? 'Shot cohesion on' : 'Cohesion relaxed (code)'}</span>}>
       <div className="form">
         <VideoTypePicker value={videoTypeOf(p.kind, r)} onPick={pick} compact />
+        <Field label="Still frames" hint={STILL_MODELS[r.stills].blurb}><Segmented value={r.stills} onChange={(v) => setR({ stills: v as StillModel })} options={[['quality', `Quality · ${STILL_MODELS.quality.model}`], ['speed', `Speed · ${STILL_MODELS.speed.model}`]]} /></Field>
         <Expert>
           <div className="form-row">
             <Field label="Pictures"><Select value={r.look} onChange={(v) => setR({ look: v as any })} options={[['code', 'Pure code'], ['photoreal', 'Photoreal repaint (H3)'], ['mixed', 'Music video mix'], ['live', 'Live action (H3)']]} /></Field>

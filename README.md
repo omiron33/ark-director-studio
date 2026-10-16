@@ -57,7 +57,7 @@ to film.json on push.
 The Sketch tab is for building a frame by hand. Drag from head to feet to place a stick figure, and add
 lines, boxes, circles, arrows (who moves or looks where) and labels. Shapes stay editable: select,
 move, drag an end, undo. Say in words who is who, pick how closely to follow the drawing (exactly, as
-a layout, or as an idea) and generate up to four frames. Qwen-Image sees the drawing as a reference
+a layout, or as an idea) and generate up to four frames. The still model sees the drawing as a reference
 image next to the shot's prompt. Pick one and it becomes the shot's storyboard frame, which the next
 take starts from.
 
@@ -83,7 +83,9 @@ you turn it on:
 
 ## Run it
 
-Node 20 or later, ffmpeg, Blender, ComfyUI with the MiniMax H3 and Qwen-Image models.
+Node 20 or later, ffmpeg, Blender, ComfyUI with the MiniMax H3 models and the still models: FLUX 3 Image
+Klein for the Quality setting (the default) and Qwen-Image 2.1 for Speed. Pick one per film under Video
+type, Still frames, or per shot in the Shot tab.
 
 ```bash
 npm install
