@@ -143,7 +143,7 @@ export interface Greybox {
   still?: string;
 }
 
-export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string; refs?: string[] }
+export interface StoryboardFrame { id: string; file: string; prompt: string; engine: string; seed?: number; at: string; sketchId?: string; refs?: string[]; fix?: string }
 
 export type TakeStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface Take {

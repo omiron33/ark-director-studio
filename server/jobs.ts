@@ -108,9 +108,11 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at, fix }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
+    // a reviewer's correction rides on top of the shot's own prompt for this one frame
+    if (fix) prompt = `${prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true })}\nCorrection for this frame: ${fix}`;
     if (at === 'end') {
       // the end of a moving shot: follow the greybox's last frame, and the start frame for continuity
       const endLayout = shot.greybox?.still?.replace(/\.png$/, '-end.png');
@@ -124,7 +126,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       const r = await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
       await mutate(projectId, (pp) => {
         const s = findShot(pp, shotId).shot;
-        const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'comfy+end', seed: r.seed, at: now(), refs: files };
+        const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'comfy+end', seed: r.seed, at: now(), refs: files, fix };
         s.endFrames = [fr, ...(s.endFrames ?? [])].slice(0, 12);
         s.selectedEnd = fr.id;
       });
@@ -142,7 +144,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;
-      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : files.length ? `${engine}+refs` : engine, seed: r.seed, at: now(), sketchId: sk?.id, refs: engine === 'grok' ? undefined : files };
+      const fr = { id: uid('f'), file: r.file, prompt: text, engine: sk ? `${engine}+sketch` : files.length ? `${engine}+refs` : engine, seed: r.seed, at: now(), sketchId: sk?.id, refs: engine === 'grok' ? undefined : files, fix };
       s.storyboard.unshift(fr);
       s.selectedFrame = fr.id;
     });
