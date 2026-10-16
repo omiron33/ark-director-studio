@@ -117,20 +117,22 @@ export function stillWords(prompt: string) {
     .replace(/\b(the words?|his line|her line|the line)\s*:\s*[^\n]*/gi, '$1, acted, not written');
 }
 const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
-async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string; prop?: boolean; note?: string }[] = []) {
+async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string; prop?: boolean; note?: string }[] = [], layoutIsFrame = false) {
   const lay = layout && fs.existsSync(mediaPath(projectId, layout)) ? mediaPath(projectId, layout) : undefined;
   const cast = people.filter((x) => fs.existsSync(mediaPath(projectId, x.file))).slice(0, lay ? 5 : 6);
   const refs = [...(lay ? [lay] : []), ...cast.map((x) => mediaPath(projectId, x.file))];
   const lines: string[] = [];
-  if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
+  if (lay && !layoutIsFrame) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
   cast.forEach((x, i) => lines.push(x.prop
     ? `The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference picture of ${x.name}, a place, not a person: keep its design, material and scale exactly (${x.note ?? ''}).`
     : `The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference sheet of ${x.name} (several views of the same person plus a face close-up): keep that face, hair, build and clothing exactly; ${x.name} appears exactly once in the picture.`));
   if (cast.some((x) => !x.prop)) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
   lines.push('A clean, smooth cinematic photograph: no film grain, no noise, no oversharpening, no HDR crunch, no crackle, mottling or cracked-paint texture on faces, skin or cloth; natural skin. Keep the world’s light, colour and mood exactly as described, and add no fire where none is described. No blood and no wounds on anyone.');
   lines.push('No text anywhere: no captions, subtitles, words, letters, signs or watermarks. Spoken or sung lines are acted on the faces, never written in the picture.');
-  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white; there is exactly one Christ in the picture, and he is an ordinary man of normal human height, never larger than life or giant beside doors, walls or other people.");
-  if (people.some((x) => /satan/i.test(x.name))) lines.push('Satan shows only fearful anger: he never kneels, prays, bows, folds or lifts his hands in reverence, and never lies down unless the shot says he is thrown down.');
+  lines.push('Everyone is an adult of natural human proportions with ordinary human eyes, never glowing; no children unless the words ask for them; no duplicated or cloned people.');
+  if (people.some((x) => x.prop && /gate/i.test(x.name))) lines.push('Every person is tiny beside the gates: the gates are about twenty times taller than a standing man.');
+  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white; there is exactly one Christ in the picture, and he is an ordinary man of normal human height, never larger than life or giant beside doors, walls or other people; he stands or walks on the ground, never floating, and wears no chains, shackles or cuffs.");
+  if (people.some((x) => /satan/i.test(x.name))) lines.push('Satan keeps his deep black hood up and shows only fearful anger: he never kneels, prays, presses his palms together, bows, folds or lifts his hands in reverence, and never lies down unless the shot says he is thrown down.');
   const [f] = await grokGenerate({ prompt: [...lines, stillWords(prompt)].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
 }
@@ -160,8 +162,13 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       // the end of a moving shot: follow the greybox's last frame, and the start frame for continuity
       if (engine === 'grok') {
         // Grok Imagine sees words only: the shot's prompt, told it is the end of the move
-        const text = endFramePrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), shot.camera.move);
-        const r = await grokStill(projectId, text, 'storyboard', ctx, shot.greybox?.still?.replace(/\.png$/, '-end.png'), stillRefs(p, shot, true, true).sheets);
+        // Grok edits the shot's chosen FIRST frame into its last one, so the place, people, costumes and light
+        // stay the same and only the camera (and the action) move on; without a first frame it follows the end layout
+        const first = shot.storyboard.find((f) => f.id === shot.selectedFrame) ?? shot.storyboard[0];
+        let text = endFramePrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), shot.camera.move);
+        if (first) text = `The first attached image is this shot's FIRST frame. Make its LAST frame: exactly the same place, the same people with the same faces, costumes and props, the same light and colours, seen after the camera move (${shot.camera.move || 'the shot holds'}) and a moment later in the action. Do not change the set or add or remove anyone. ` + text;
+        const layout = first ? first.file : shot.greybox?.still?.replace(/\.png$/, '-end.png');
+        const r = await grokStill(projectId, text, 'storyboard', ctx, layout, stillRefs(p, shot, true, true).sheets, !!first);
         await mutate(projectId, (pp) => {
           const s = findShot(pp, shotId).shot;
           const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'grok+end', model: r.model, at: now(), fix };
@@ -272,8 +279,10 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const tag = `${projectId}-${shotId}-${takeId}`;
     const up = async (file: string | undefined, name: string) => file ? comfy.upload(mediaPath(projectId, file), `ads-${tag}-${name}${path.extname(file)}`) : null;
     const frames = h3Len(opts.duration ?? shot.duration);
+    // lip sync: the speaker mouths exactly the locked sung slice, and only while it sounds
+    const sings = opts.lipsync?.audio ? `\n${opts.lipsync.speaker ?? 'The speaker'} sings exactly the words heard in the audio, lips and jaw matching every syllable; whenever the audio is silent his mouth is closed. Nobody else in the shot sings or speaks.` : '';
     const graph = h3Graph({
-      prompt: take.prompt,
+      prompt: take.prompt + sings + LIVE_MOTION,
       frames,
       seed: take.seed!,
       steps: opts.steps ?? 20,
@@ -403,6 +412,9 @@ export function stillRefs(p: Project, shot: Shot, on = true, sheetFirst = false)
 // What a take starts from and carries, by the continuity rules:
 // start from the previous shot's chosen take's last frame when the sequence chains, otherwise from
 // the chosen storyboard frame; every character sheet in the shot and the sequence's look ride along.
+// Every take: the whole frame lives, and the camera moves in one smooth line (no static background, no jumps).
+const LIVE_MOTION = '\nThe whole world in the frame moves naturally and continuously the entire time: people in the background breathe, shift, turn their heads, raise their arms and react; chains sway, flames flicker, smoke and embers drift. One smooth, continuous camera move from start to end, with no jumps, morphs or sudden changes.';
+
 export function resolveTakeInputs(p: Project, shot: Shot, opts: any = {}) {
   const { seq } = findShot(p, shot.id);
   const prev = previousShot(p, shot.id);
