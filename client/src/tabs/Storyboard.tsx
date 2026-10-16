@@ -1,7 +1,7 @@
-import { RefreshCw, Trash2, Clapperboard, ChevronLeft, ChevronRight, Plus, Images, Film, Link2, Link2Off, Sparkles, Layers } from 'lucide-react';
+import { RefreshCw, Trash2, Clapperboard, ChevronLeft, ChevronRight, Plus, Images, Film, Link2, Link2Off, Sparkles, Layers, X } from 'lucide-react';
 import { api, media } from '../api';
 import { useStudio, useSelection, tc } from '../store';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Btn, Edit, Select, Empty, Expert, Field, StatusTag, Cols, Col, Segmented } from '../ui';
 import { CAMERA_PRESETS, STILL_MODELS, withRender, type Shot, type Sequence, type Project, type StillModel, type StoryboardFrame } from '../../../shared/types';
 
@@ -78,12 +78,13 @@ function ShotCard({ p, q, s, i }: { p: Project; q: Sequence; s: Shot; i: number 
 
 // The whole film as pictures only: every shot's key frames (start, then end) in story order, one
 // continuous strip, so a shot that doesn't follow from the one before is easy to see. Click pictures to
-// select them, then delete them or make new ones with FLUX (Quality) or Grok Imagine; double-click opens the shot.
+// select them, then delete them or make new ones with FLUX (Quality) or Grok Imagine; double-click opens the picture full size.
 function FilmBoard({ p }: { p: Project }) {
   const { select, setTab, ops, run, jobs } = useStudio();
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [armed, setArmed] = useState(false);
   const [model, setModel] = useState<StillModel>(withRender(p.render).stills);
+  const [view, setView] = useState<string | null>(null);
   type Pic = { key: string; fid?: string; file?: string; n: number; end: boolean; q: string; s: string; fr?: StoryboardFrame; title: string; seq: string; count: number };
   const pics: Pic[] = [];
   let n = 0;
@@ -127,18 +128,49 @@ function FilmBoard({ p }: { p: Project }) {
           <Btn small kind="solid" onClick={regen}><RefreshCw size={13} />Regenerate</Btn>
           <Btn small kind="danger" onClick={del}><Trash2 size={13} />{armed ? 'Click again to delete' : 'Delete'}</Btn>
           <Btn small onClick={() => setSel(new Set())}>Clear</Btn>
-        </> : <span className="muted small">Click pictures to select them, then regenerate them (Quality · FLUX, Speed · Qwen or Premium · Grok Imagine) or delete them. Double-click opens the shot.</span>}
+        </> : <span className="muted small">Click pictures to select them, then regenerate them (Quality · FLUX, Speed · Qwen or Premium · Grok Imagine) or delete them. Double-click a picture to see it full size.</span>}
       </div>
       <div className="filmstrip">
         {pics.map((x) => (
-          <figure key={x.key} className={`${x.end ? 'end' : ''} ${sel.has(x.key) ? 'sel' : ''}`} onClick={() => toggle(x.key)} onDoubleClick={() => { select(x.q, x.s); setTab('shot'); }}>
+          <figure key={x.key} className={`${x.end ? 'end' : ''} ${sel.has(x.key) ? 'sel' : ''}`} onClick={() => toggle(x.key)} onDoubleClick={() => { toggle(x.key); setView(x.key); }}>
             {x.file ? <img src={media(p.id, x.file)} loading="lazy" /> : <div className="ph"><Clapperboard size={22} /></div>}
             <span>{x.n}{x.end ? ' end' : ''}</span>
             {busy(x) ? <i className="fb-busy">working…</i> : sel.has(x.key) ? <FrameMeta x={x} /> : null}
           </figure>
         ))}
       </div>
+      {view ? <Preview pics={pics.filter((x) => x.file)} at={view} p={p} onMove={setView} onClose={() => setView(null)} onShot={(x) => { setView(null); select(x.q, x.s); setTab('shot'); }} /> : null}
     </>
+  );
+}
+
+// Full-size preview of one board picture. Esc or a click outside closes it; the arrow keys step through the board.
+function Preview({ pics, at, p, onMove, onClose, onShot }: { pics: { key: string; file?: string; q: string; s: string; n: number; end: boolean; title: string; seq: string; count: number; fr?: StoryboardFrame }[]; at: string; p: Project; onMove: (k: string) => void; onClose: () => void; onShot: (x: { q: string; s: string }) => void }) {
+  const i = Math.max(0, pics.findIndex((x) => x.key === at));
+  const x = pics[i];
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight' && pics[i + 1]) onMove(pics[i + 1].key);
+      else if (e.key === 'ArrowLeft' && pics[i - 1]) onMove(pics[i - 1].key);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [i, pics, onClose, onMove]);
+  if (!x) return null;
+  return (
+    <div className="fb-preview" onClick={onClose}>
+      <div className="fb-preview-box" onClick={(e) => e.stopPropagation()}>
+        <img src={media(p.id, x.file!)} />
+        <FrameMeta x={x} />
+        <div className="fb-preview-bar">
+          <Btn small onClick={() => pics[i - 1] && onMove(pics[i - 1].key)}><ChevronLeft size={14} /></Btn>
+          <Btn small onClick={() => pics[i + 1] && onMove(pics[i + 1].key)}><ChevronRight size={14} /></Btn>
+          <Btn small onClick={() => onShot(x)}>Open shot</Btn>
+          <Btn small onClick={onClose}><X size={14} />Close</Btn>
+        </div>
+      </div>
+    </div>
   );
 }
 
