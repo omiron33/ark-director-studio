@@ -108,6 +108,14 @@ async function comfyStill(projectId: string, prompt: string, sub: string, ctx: C
 // Grok Imagine still. With a layout (the shot's greybox frame) Grok edits that picture into the scene,
 // so the planned camera and blocking hold; without one it works from the words alone.
 // With people, their portraits ride along too, so faces, hair, build and costume hold from shot to shot.
+// A still from words: drop the film-grain and grit wording the film's look carries (Grok paints it as noise),
+// and the quoted spoken lines (Grok writes them into the picture as subtitles).
+export function stillWords(prompt: string) {
+  return prompt
+    .replace(/,?\s*\b(rough|heavy|fine|light)?\s*(16|35)?(mm)?\s*film grain\b/gi, '')
+    .replace(/\bgritty\s+/gi, '')
+    .replace(/\b((?:on|with|singing|saying|speaking) (?:the words?|his line|her line|the line))\s*:\s*[^\n]*/gi, '$1, acted, not written');
+}
 const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
 async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string }[] = []) {
   const lay = layout && fs.existsSync(mediaPath(projectId, layout)) ? mediaPath(projectId, layout) : undefined;
@@ -117,9 +125,10 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
   if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
   cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference sheet of ${x.name} (several views of the same person plus a face close-up): keep that face, hair, build and clothing exactly; ${x.name} appears exactly once in the picture.`));
   if (cast.length) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
-  lines.push('Sharp, high-detail photograph with natural skin and real pores, no crackle, mottling, cracked-paint texture or pixelation on faces; keep the world as dark, fiery and fantastical as described, with firelight, smoke, embers and cold blue light. No blood and no wounds on anyone.');
-  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push('Christ is solemn and grave, never smiling.');
-  const [f] = await grokGenerate({ prompt: [...lines, prompt].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
+  lines.push('A clean, smooth cinematic photograph: no film grain, no noise, no oversharpening, no HDR crunch, no crackle, mottling or cracked-paint texture on faces, skin or cloth; natural skin. Keep the world as dark, fiery and fantastical as described, with firelight, smoke, embers and cold blue light. No blood and no wounds on anyone.');
+  lines.push('No text anywhere: no captions, subtitles, words, letters, signs or watermarks. Spoken or sung lines are acted on the faces, never written in the picture.');
+  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white.");
+  const [f] = await grokGenerate({ prompt: [...lines, stillWords(prompt)].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
 }
 

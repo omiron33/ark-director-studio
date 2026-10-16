@@ -81,9 +81,10 @@ async function promptBox(page: Page) {
 }
 
 // The picture in the post viewer: the one big image shown on a post page (gallery tiles are small).
+// At least 1000 px wide: Grok's results are bigger than that, and our uploaded layout (960 wide) can show in the viewer too.
 const viewerImage = (page: Page) => page.evaluate(() => {
   const big = [...document.querySelectorAll('img')].map((i) => ({ src: i.currentSrc || i.src, w: i.getBoundingClientRect().width, n: i.naturalWidth }))
-    .filter((x) => x.src && x.w >= 500 && x.n >= 700);
+    .filter((x) => x.src && x.w >= 500 && x.n >= 1000 && !x.src.startsWith('blob:'));
   return big.length ? big[big.length - 1].src : null;
 });
 // First result tile on the results page (opens its post).
