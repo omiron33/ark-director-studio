@@ -107,10 +107,16 @@ async function comfyStill(projectId: string, prompt: string, sub: string, ctx: C
 
 // Grok Imagine still. With a layout (the shot's greybox frame) Grok edits that picture into the scene,
 // so the planned camera and blocking hold; without one it works from the words alone.
-const LAYOUT_EDIT = 'Turn this grey 3D layout into a photoreal film still, keeping its exact camera angle, framing and where each figure and structure stands; paint real people and the real place, never grey mannequins or boxes. ';
-async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string) {
-  const image = layout && fs.existsSync(mediaPath(projectId, layout)) ? mediaPath(projectId, layout) : undefined;
-  const [f] = await grokGenerate({ prompt: image ? LAYOUT_EDIT + prompt : prompt, kind: 'image', image, outDir: mediaPath(projectId, sub), onLine: ctx.log });
+// With people, their portraits ride along too, so faces, hair, build and costume hold from shot to shot.
+const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string }[] = []) {
+  const lay = layout && fs.existsSync(mediaPath(projectId, layout)) ? mediaPath(projectId, layout) : undefined;
+  const cast = people.filter((x) => fs.existsSync(mediaPath(projectId, x.file))).slice(0, lay ? 5 : 6);
+  const refs = [...(lay ? [lay] : []), ...cast.map((x) => mediaPath(projectId, x.file))];
+  const lines: string[] = [];
+  if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
+  cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is ${x.name}: keep that face, hair, build and clothing exactly; ${x.name} appears exactly once.`));
+  const [f] = await grokGenerate({ prompt: [...lines, prompt].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
 }
 
@@ -140,7 +146,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
       if (engine === 'grok') {
         // Grok Imagine sees words only: the shot's prompt, told it is the end of the move
         const text = endFramePrompt(prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true }), shot.camera.move);
-        const r = await grokStill(projectId, text, 'storyboard', ctx, shot.greybox?.still?.replace(/\.png$/, '-end.png'));
+        const r = await grokStill(projectId, text, 'storyboard', ctx, shot.greybox?.still?.replace(/\.png$/, '-end.png'), stillRefs(p, shot, true).sheets);
         await mutate(projectId, (pp) => {
           const s = findShot(pp, shotId).shot;
           const fr = { id: uid('f'), file: r.file, prompt: text, engine: 'grok+end', model: r.model, at: now(), fix };
@@ -175,7 +181,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const text = sk ? sketchPrompt(base, sk, follow) : engine === 'grok' ? base : refsPrompt(base, refs);
     const files = sk?.image ? [sk.image] : [refs.layout, ...refs.sheets.map((x) => x.file)].filter(Boolean) as string[];
     const r = engine === 'grok'
-      ? await grokStill(projectId, text, 'storyboard', ctx, sk ? undefined : shot.greybox?.still)
+      ? await grokStill(projectId, text, 'storyboard', ctx, sk ? undefined : shot.greybox?.still, sk ? [] : refs.sheets)
       : await comfyStill(projectId, text, 'storyboard', ctx, p.aspect, files, sm);
     await mutate(projectId, (pp) => {
       const s = findShot(pp, shotId).shot;

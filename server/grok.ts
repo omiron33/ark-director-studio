@@ -99,13 +99,13 @@ async function saveSrc(page: Page, src: string, file: string) {
 // Generate on Grok Imagine and save what it makes.
 //  kind 'image' with `image`: Grok edits that picture (our greybox layout) into the scene the prompt describes.
 //  kind 'video' with `image`: animates that image.
-export function grokGenerate({ prompt, kind, image, outDir, count = 1, timeoutMs = 6 * 60000, onLine }: { prompt: string; kind: 'image' | 'video'; image?: string; outDir: string; count?: number; timeoutMs?: number; onLine?: (l: string) => void }): Promise<string[]> {
-  const job = busy.then(() => runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLine }));
+export function grokGenerate({ prompt, kind, image, refs, outDir, count = 1, timeoutMs = 6 * 60000, onLine }: { prompt: string; kind: 'image' | 'video'; image?: string; refs?: string[]; outDir: string; count?: number; timeoutMs?: number; onLine?: (l: string) => void }): Promise<string[]> {
+  const job = busy.then(() => runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs, onLine }));
   busy = job.catch(() => {});
   return job;
 }
 
-async function runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLine }: { prompt: string; kind: 'image' | 'video'; image?: string; outDir: string; count: number; timeoutMs: number; onLine?: (l: string) => void }) {
+async function runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs, onLine }: { prompt: string; kind: 'image' | 'video'; image?: string; refs?: string[]; outDir: string; count: number; timeoutMs: number; onLine?: (l: string) => void }) {
   const c = await context();
   const page = await c.newPage();
   const saved: string[] = [];
@@ -130,7 +130,14 @@ async function runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLi
     await page.waitForTimeout(2500);
     if (await blocked(page)) throw Error('Grok is showing a human check; solve it in the Grok window, then retry');
     if (/login|sign-in|signin/.test(page.url())) throw Error('Grok is not signed in; use Open Grok in Settings and sign in once');
-    if (image) {
+    if (refs?.length && kind === 'image') {
+      // several reference pictures ride in the prompt box (layout first, then the people); the prompt says which is which
+      const image = page.getByRole('radio', { name: /^image$/i }).first();
+      if (await image.isVisible().catch(() => false)) await image.click().catch(() => {});
+      await page.locator('form input[type="file"]').last().setInputFiles(refs.slice(0, 6), { timeout: 15000 });
+      onLine?.(`attached ${refs.length} reference image${refs.length > 1 ? 's' : ''}`);
+      await page.waitForTimeout(3000);
+    } else if (image) {
       await page.locator('input[type="file"]').first().setInputFiles(image, { timeout: 15000 });
       onLine?.('attached the layout image');
       await page.waitForURL(/imagine\/post\//, { timeout: 30000 }).catch(() => {});
@@ -153,6 +160,7 @@ async function runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLi
       await page.waitForTimeout(3000);
       if (await blocked(page)) throw Error('Grok is showing a human check; solve it in the Grok window, then retry');
       if (kind !== 'image') continue;
+      if (!opened && refs?.length && /imagine\/post\//.test(page.url())) opened = true; // with references Grok opens the result's post itself
       if (!opened) { // words only: results land as a grid; open the first one to get the full picture
         if (await openFirstResult(page)) { opened = true; await page.waitForURL(/imagine\/post\//, { timeout: 15000 }).catch(() => {}); }
         continue;
