@@ -117,7 +117,7 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
   if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
   cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is ${x.name}: keep that face, hair, build and clothing exactly; ${x.name} appears exactly once.`));
   if (cast.length) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
-  lines.push('Clean, sharp, high-detail photograph: smooth natural skin with real pores, no crackle, mottling, cracked-paint texture, noise or pixelation. No blood and no wounds on anyone.');
+  lines.push('Sharp, high-detail photograph with natural skin and real pores, no crackle, mottling, cracked-paint texture or pixelation on faces; keep the world as dark, fiery and fantastical as described, with firelight, smoke, embers and cold blue light. No blood and no wounds on anyone.');
   if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push('Christ is solemn and grave, never smiling.');
   const [f] = await grokGenerate({ prompt: [...lines, prompt].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
