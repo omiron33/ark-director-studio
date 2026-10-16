@@ -122,6 +122,7 @@ export interface Character {
   sheets?: string[];        // earlier sheets, newest first
   locked?: boolean;         // locked sheets are attached to every take the character is in
   model?: CharacterModel;   // the 3D figure used in greyboxes
+  prop?: boolean;           // a set piece (a gate, a tomb), not a person: its sheet is a reference picture that holds its design and scale
 }
 
 export interface Look {

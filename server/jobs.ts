@@ -14,7 +14,7 @@ import { renderGreybox, defaultGreybox, renderModel } from './blender.ts';
 import { grokGenerate } from './grok.ts';
 import { runAgent, extractJson } from './agents.ts';
 import { runStage, pullSceneClip, ARK_STAGES } from './ark.ts';
-import type { Job, JobKind, Project, Take, AgentId, Shot, StillModel } from '../shared/types.ts';
+import type { Job, JobKind, Project, Take, AgentId, Shot, StillModel, Character } from '../shared/types.ts';
 import { CAMERA_PRESETS, cohesionOn, stillModelOf, localStillModel, STILL_MODELS } from '../shared/types.ts';
 
 const FILE = path.join(config.dataDir, 'jobs.json');
@@ -114,20 +114,23 @@ export function stillWords(prompt: string) {
   return prompt
     .replace(/,?\s*\b(rough|heavy|fine|light)?\s*(16|35)?(mm)?\s*film grain\b/gi, '')
     .replace(/\bgritty\s+/gi, '')
-    .replace(/\b((?:on|with|singing|saying|speaking) (?:the words?|his line|her line|the line))\s*:\s*[^\n]*/gi, '$1, acted, not written');
+    .replace(/\b(the words?|his line|her line|the line)\s*:\s*[^\n]*/gi, '$1, acted, not written');
 }
 const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
-async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string }[] = []) {
+async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ctx, layout?: string, people: { name: string; file: string; prop?: boolean; note?: string }[] = []) {
   const lay = layout && fs.existsSync(mediaPath(projectId, layout)) ? mediaPath(projectId, layout) : undefined;
   const cast = people.filter((x) => fs.existsSync(mediaPath(projectId, x.file))).slice(0, lay ? 5 : 6);
   const refs = [...(lay ? [lay] : []), ...cast.map((x) => mediaPath(projectId, x.file))];
   const lines: string[] = [];
   if (lay) lines.push('The first attached image is a grey 3D layout of this shot: use it for the exact camera angle, framing and where each figure and structure stands, and paint it as a real photographic film still, never grey mannequins or boxes.');
-  cast.forEach((x, i) => lines.push(`The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference sheet of ${x.name} (several views of the same person plus a face close-up): keep that face, hair, build and clothing exactly; ${x.name} appears exactly once in the picture.`));
-  if (cast.length) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
-  lines.push('A clean, smooth cinematic photograph: no film grain, no noise, no oversharpening, no HDR crunch, no crackle, mottling or cracked-paint texture on faces, skin or cloth; natural skin. Keep the world as dark, fiery and fantastical as described, with firelight, smoke, embers and cold blue light. No blood and no wounds on anyone.');
+  cast.forEach((x, i) => lines.push(x.prop
+    ? `The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference picture of ${x.name}, a place, not a person: keep its design, material and scale exactly (${x.note ?? ''}).`
+    : `The ${ORD[i + (lay ? 1 : 0)]} attached image is a reference sheet of ${x.name} (several views of the same person plus a face close-up): keep that face, hair, build and clothing exactly; ${x.name} appears exactly once in the picture.`));
+  if (cast.some((x) => !x.prop)) lines.push('Take only who each person is from their picture (face, hair, beard, build, clothing), never its skin texture, grain or lighting.');
+  lines.push('A clean, smooth cinematic photograph: no film grain, no noise, no oversharpening, no HDR crunch, no crackle, mottling or cracked-paint texture on faces, skin or cloth; natural skin. Keep the world’s light, colour and mood exactly as described, and add no fire where none is described. No blood and no wounds on anyone.');
   lines.push('No text anywhere: no captions, subtitles, words, letters, signs or watermarks. Spoken or sung lines are acted on the faces, never written in the picture.');
-  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white.");
+  if (people.some((x) => /christ|jesus/i.test(x.name))) lines.push("Christ is solemn and grave, never smiling, and his robe is spotless pure white; there is exactly one Christ in the picture.");
+  if (people.some((x) => /satan/i.test(x.name))) lines.push('Satan shows only fearful anger: he never kneels, prays, bows, folds or lifts his hands in reverence, and never lies down unless the shot says he is thrown down.');
   const [f] = await grokGenerate({ prompt: [...lines, stillWords(prompt)].join(' '), kind: 'image', refs, outDir: mediaPath(projectId, sub), onLine: ctx.log });
   return { file: rel(projectId, f), seed: undefined, model: 'Grok Imagine' };
 }
@@ -389,7 +392,10 @@ export function stillRefs(p: Project, shot: Shot, on = true, sheetFirst = false)
   if (!on) return { layout: undefined as string | undefined, sheets: [] as { name: string; file: string }[] };
   const placed = (shot.greybox?.actors ?? []).map((a) => a.castId).filter(Boolean) as string[];
   const ids = [...new Set([...placed, ...shot.castIds])];
-  const sheets = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.portrait || c?.sheet).slice(0, 4).map((c) => ({ name: c!.name, file: (sheetFirst ? c!.sheet ?? c!.portrait : c!.portrait ?? c!.sheet)! }));
+  const found = ids.map((id) => p.cast.find((c) => c.id === id)).filter((c) => c?.portrait || c?.sheet) as Character[];
+  // up to four people, then any set pieces (a gate) so they hold their design and scale
+  const sheets = [...found.filter((c) => !c.prop).slice(0, 4), ...found.filter((c) => c.prop).slice(0, 1)]
+    .map((c) => ({ name: c.name, file: (sheetFirst ? c.sheet ?? c.portrait : c.portrait ?? c.sheet)!, prop: c.prop, note: c.prop ? c.description : undefined }));
   return { layout: shot.greybox?.still, sheets };
 }
 
