@@ -75,9 +75,19 @@ async function promptBox(page: Page) {
   throw Error('could not find the Grok Imagine prompt box; is the window signed in?');
 }
 
-// The finished pictures on the page: big <img> elements, newest last.
-const bigImages = (page: Page) => page.evaluate(() => [...document.querySelectorAll('img')]
-  .filter((i) => (i.naturalWidth || 0) >= 900).map((i) => i.currentSrc || i.src).filter(Boolean));
+// The picture in the post viewer: the one big image shown on a post page (gallery tiles are small).
+const viewerImage = (page: Page) => page.evaluate(() => {
+  const big = [...document.querySelectorAll('img')].map((i) => ({ src: i.currentSrc || i.src, w: i.getBoundingClientRect().width, n: i.naturalWidth }))
+    .filter((x) => x.src && x.w >= 500 && x.n >= 700);
+  return big.length ? big[big.length - 1].src : null;
+});
+// First result tile on the results page (opens its post).
+const openFirstResult = (page: Page) => page.evaluate(() => {
+  const tiles = [...document.querySelectorAll('img')].filter((i) => { const r = i.getBoundingClientRect(); return r.width >= 120 && r.width < 500 && r.top > 0 && /generated|data:/.test(i.currentSrc || i.src); });
+  const t = tiles[0]?.closest('a,button,[role=button],li,div') as HTMLElement | null;
+  if (t) { (tiles[0] as HTMLElement).click(); return true; }
+  return false;
+});
 
 async function saveSrc(page: Page, src: string, file: string) {
   if (src.startsWith('data:')) { fs.writeFileSync(file, Buffer.from(src.slice(src.indexOf(',') + 1), 'base64')); return; }
@@ -130,7 +140,7 @@ async function runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLi
       const toggle = page.getByRole('button', { name: /video/i }).first();
       if (await toggle.isVisible().catch(() => false)) await toggle.click().catch(() => {});
     }
-    const before = new Set(await bigImages(page));
+    const startUrl = page.url();
     page.on('response', onResponse);
     const box = await promptBox(page);
     await box.click();
@@ -138,22 +148,26 @@ async function runGenerate({ prompt, kind, image, outDir, count, timeoutMs, onLi
     await page.keyboard.press('Enter');
     onLine?.(`submitted to Grok Imagine (${kind}${image ? ', editing the layout' : ''})`);
     const t0 = Date.now();
+    let last = '', steady = 0, opened = !!image;
     while (saved.length < count && Date.now() - t0 < timeoutMs) {
       await page.waitForTimeout(3000);
       if (await blocked(page)) throw Error('Grok is showing a human check; solve it in the Grok window, then retry');
-      if (kind === 'image') {
-        // a finished picture is a big image that was not on the page before we submitted
-        const fresh = (await bigImages(page)).filter((s) => !before.has(s) && !seen.has(s) && !/imagine-public/.test(s));
-        for (const src of fresh.slice(0, count - saved.length)) {
-          await page.waitForTimeout(1500); // let it settle past the blurred preview
-          const f = path.join(outDir, `grok-${Date.now()}-${saved.length}.jpg`);
-          try { await saveSrc(page, src, f); } catch (e: any) { onLine?.(e.message); continue; }
-          if (fs.statSync(f).size < 60_000) { fs.rmSync(f, { force: true }); continue; } // a preview, not the result
-          seen.add(src);
-          saved.push(f);
-          onLine?.(`saved ${path.basename(f)} (${Math.round(fs.statSync(f).size / 1024)} KB)`);
-        }
+      if (kind !== 'image') continue;
+      if (!opened) { // words only: results land as a grid; open the first one to get the full picture
+        if (await openFirstResult(page)) { opened = true; await page.waitForURL(/imagine\/post\//, { timeout: 15000 }).catch(() => {}); }
+        continue;
       }
+      if (image && page.url() === startUrl) continue; // the edit has not produced its post yet
+      const src = await viewerImage(page);
+      if (!src) continue;
+      // wait until the viewer stops changing (it shows a blurred preview first)
+      if (src === last) steady++; else { last = src; steady = 0; }
+      if (steady < 2) continue;
+      const f = path.join(outDir, `grok-${Date.now()}-${saved.length}.jpg`);
+      try { await saveSrc(page, src, f); } catch (e: any) { onLine?.(e.message); continue; }
+      if (fs.statSync(f).size < 60_000) { fs.rmSync(f, { force: true }); continue; }
+      saved.push(f);
+      onLine?.(`saved ${path.basename(f)} (${Math.round(fs.statSync(f).size / 1024)} KB)`);
     }
     if (!saved.length) throw Error('Grok Imagine did not return anything in time');
     return saved.slice(0, count);
