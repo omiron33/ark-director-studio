@@ -154,6 +154,7 @@ async function runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs
       const toggle = page.getByRole('button', { name: /video/i }).first();
       if (await toggle.isVisible().catch(() => false)) await toggle.click().catch(() => {});
     }
+    const inputs = [...(refs ?? []), ...(image ? [image] : [])].filter((x) => fs.existsSync(x)).map((x) => fs.readFileSync(x));
     const startUrl = page.url();
     page.on('response', onResponse);
     const box = await promptBox(page);
@@ -181,6 +182,9 @@ async function runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs
       const f = path.join(outDir, `grok-${Date.now()}-${saved.length}.jpg`);
       try { await saveSrc(page, src, f); } catch (e: any) { onLine?.(e.message); continue; }
       if (fs.statSync(f).size < 60_000) { fs.rmSync(f, { force: true }); continue; }
+      // never keep one of our own uploads (the viewer can show the attached picture before Grok's result)
+      const got = fs.readFileSync(f);
+      if (inputs.some((b) => b.equals(got))) { fs.rmSync(f, { force: true }); continue; }
       saved.push(f);
       onLine?.(`saved ${path.basename(f)} (${Math.round(fs.statSync(f).size / 1024)} KB)`);
     }

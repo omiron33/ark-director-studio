@@ -280,7 +280,7 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const up = async (file: string | undefined, name: string) => file ? comfy.upload(mediaPath(projectId, file), `ads-${tag}-${name}${path.extname(file)}`) : null;
     const frames = h3Len(opts.duration ?? shot.duration);
     // lip sync: the speaker mouths exactly the locked sung slice, and only while it sounds
-    const sings = opts.lipsync?.audio ? `\n${opts.lipsync.speaker ?? 'The speaker'} sings exactly the words heard in the audio, lips and jaw matching every syllable; whenever the audio is silent his mouth is closed. Nobody else in the shot sings or speaks.` : '';
+    const sings = opts.lipsync?.audio ? `\n${opts.lipsync.speaker ?? 'The speaker'} sings exactly the words heard in <Audio 1>, lips and jaw matching every syllable at the moment it is sung; whenever the audio is silent his mouth is closed. Nobody else in the shot sings or speaks.` : '';
     const graph = h3Graph({
       prompt: take.prompt + sings + LIVE_MOTION,
       frames,

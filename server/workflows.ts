@@ -48,6 +48,7 @@ export function h3Graph(p: H3Params) {
   };
   if (p.look) { g[30] = { class_type: 'LoadImage', inputs: { image: p.look } }; refs.push('30'); }
   (p.characters ?? []).slice(0, 8).forEach((c, i) => { g[31 + i] = { class_type: 'LoadImage', inputs: { image: c } }; refs.push(String(31 + i)); });
+  if (p.songAudio) g[40] = { class_type: 'LoadAudio', inputs: { audio: p.songAudio } };
   let prompt = p.prompt;
   if (p.look) prompt += `\n\nstyle_reference_guidance: ${STYLE_REFERENCE}`;
   if (p.characters?.length) prompt += `\n\ncharacter_reference_guidance: ${CHARACTER_REFERENCE}`;
@@ -58,6 +59,8 @@ export function h3Graph(p: H3Params) {
       clip: ['1', 0], vae: ['3', 0], audio_vae: ['4', 0], prompt, width, height, length: p.frames, ref_image_size: 'match',
       ...Object.fromEntries(refs.map((n, i) => [`ref_images.ref_image_${i + 1}`, [n, 0]])),
       ...(withGuide ? { 'ref_videos.ref_video_1': ['21', 0] } : {}),
+      // lip sync: the sung slice also conditions the prompt as <Audio 1>
+      ...(p.songAudio ? { 'ref_audios.ref_audio_1': ['40', 0] } : {}),
     },
   });
   g[16] = cond(false);
@@ -86,7 +89,6 @@ export function h3Graph(p: H3Params) {
   // video is generated to match it (MiniMaxH3SongMaskedAVContext); the take's own audio is not used
   const lat = (src: [string, number]): [string, number] => {
     if (!p.songAudio) return src;
-    g[40] = { class_type: 'LoadAudio', inputs: { audio: p.songAudio } };
     g[41] = { class_type: 'MiniMaxH3SongMaskedAVContext', inputs: { latent: src, audio_vae: ['4', 0], master_audio: ['40', 0], clip_start_seconds: 0, context_length: 0, source_fps: 24, crop: 'disabled' } };
     return ['41', 0];
   };
