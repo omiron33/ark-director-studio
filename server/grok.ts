@@ -22,10 +22,15 @@ const portUp = async () => { try { return (await fetch(`${cdpUrl()}/json/version
 async function startChrome() {
   if (await portUp()) return;
   fs.mkdirSync(config.grok.profileDir, { recursive: true });
-  const p = spawn(config.grok.browser, [
+  // On Windows go through `start` so Chrome isn't a child of the studio: restarting the studio
+  // (which ends its process tree) must never close the Grok window.
+  const args = [
     `--remote-debugging-port=${config.grok.port}`, '--remote-debugging-address=127.0.0.1', `--user-data-dir=${config.grok.profileDir}`,
     '--no-first-run', '--no-default-browser-check', '--window-size=1400,1000', config.grok.imagineUrl,
-  ], { detached: true, stdio: 'ignore', windowsHide: false });
+  ];
+  const p = process.platform === 'win32'
+    ? spawn('cmd.exe', ['/c', 'start', '""', config.grok.browser, ...args], { detached: true, stdio: 'ignore', windowsHide: true })
+    : spawn(config.grok.browser, args, { detached: true, stdio: 'ignore' });
   p.unref();
   for (let i = 0; i < 40 && !(await portUp()); i++) await new Promise((r) => setTimeout(r, 500));
   if (!(await portUp())) throw Error('Chrome did not open its DevTools port; is another Chrome using the Grok profile folder?');
