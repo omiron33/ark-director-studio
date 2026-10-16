@@ -107,7 +107,8 @@ export function grokGenerate({ prompt, kind, image, refs, outDir, count = 1, tim
 
 async function runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs, onLine }: { prompt: string; kind: 'image' | 'video'; image?: string; refs?: string[]; outDir: string; count: number; timeoutMs: number; onLine?: (l: string) => void }) {
   const c = await context();
-  const page = await c.newPage();
+  // reuse the one Grok tab (open one only if there is none), so the window doesn't fill with tabs
+  const page = c.pages().find((p) => p.url().includes('grok.com')) ?? c.pages()[0] ?? await c.newPage();
   const saved: string[] = [];
   const seen = new Set<string>();
   fs.mkdirSync(outDir, { recursive: true });
@@ -181,6 +182,5 @@ async function runGenerate({ prompt, kind, image, refs, outDir, count, timeoutMs
     return saved.slice(0, count);
   } finally {
     page.off('response', onResponse);
-    await page.close().catch(() => {});
   }
 }
