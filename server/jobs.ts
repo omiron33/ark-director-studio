@@ -137,7 +137,8 @@ const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unkn
     const base = prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true });
     // Without a sketch, the frame follows the shot's greybox (layout and camera) and its characters' sheets.
     const refs = sk ? { layout: undefined, sheets: [] as { name: string; file: string }[] } : stillRefs(p, shot, useRefs !== false);
-    const text = sk ? sketchPrompt(base, sk, follow) : refsPrompt(base, refs);
+    // Grok Imagine gets words only (it sees no reference images), so no 'Image N is…' lines
+    const text = sk ? sketchPrompt(base, sk, follow) : engine === 'grok' ? base : refsPrompt(base, refs);
     const files = sk?.image ? [sk.image] : [refs.layout, ...refs.sheets.map((x) => x.file)].filter(Boolean) as string[];
     const r = engine === 'grok'
       ? await grokStill(projectId, text, 'storyboard', ctx)
