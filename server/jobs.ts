@@ -108,9 +108,20 @@ async function grokStill(projectId: string, prompt: string, sub: string, ctx: Ct
 }
 
 const HANDLERS: Record<JobKind, (j: Job, payload: any, ctx: Ctx) => Promise<unknown>> = {
-  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at, fix }: any, ctx) {
+  async storyboard(j, { projectId, shotId, engine = 'comfy', prompt, sketchId, follow, refs: useRefs = true, at, fix, refFiles }: any, ctx) {
     const p = readProject(projectId);
     const { seq, shot } = findShot(p, shotId);
+    if (Array.isArray(refFiles) && refFiles.length) {
+      // a frame painted from chosen pictures (a blend): the prompt says what each image is for
+      const r = await comfyStill(projectId, String(prompt ?? ''), 'storyboard', ctx, p.aspect, refFiles.slice(0, 8));
+      await mutate(projectId, (pp) => {
+        const s = findShot(pp, shotId).shot;
+        const fr = { id: uid('f'), file: r.file, prompt: String(prompt ?? ''), engine: 'comfy+blend', seed: r.seed, at: now(), refs: refFiles };
+        s.storyboard.unshift(fr);
+        s.selectedFrame = fr.id;
+      });
+      return r;
+    }
     // a reviewer's correction rides on top of the shot's own prompt for this one frame
     if (fix) prompt = `${prompt?.trim() || shotPrompt(p, seq, shot, { forStill: true })}\nCorrection for this frame: ${fix}`;
     if (at === 'end') {

@@ -65,10 +65,10 @@ app.post('/api/projects/:id/upload', express.raw({ type: '*/*', limit: '2gb' }),
 
 const P = (req: Request) => req.params.id;
 app.post('/api/projects/:id/storyboard', wrap((req) => {
-  const { shotId, engine = 'comfy', prompt, refs = true, at, fix } = req.body;
+  const { shotId, engine = 'comfy', prompt, refs = true, at, fix, refFiles } = req.body;
   const p = store.readProject(P(req));
   const { shot, seq } = store.findShot(p, shotId);
-  return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt, refs, at, fix }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
+  return jobs.enqueue('storyboard', `${p.title}: ${shot.title} storyboard frame`, { projectId: p.id, shotId, engine, prompt, refs, at, fix, refFiles }, { projectId: p.id, gpu: engine !== 'grok', ref: { shotId, sequenceId: seq.id } });
 }));
 // End frames for every shot whose camera moves (greybox start and end marks differ), in one sequence or the film.
 app.post('/api/projects/:id/end-frames', wrap((req) => {
