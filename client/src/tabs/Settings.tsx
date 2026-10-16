@@ -31,11 +31,11 @@ export function Settings() {
       </Col>
       <Col w={1}>
       <Card area="grok" id="set-grok" title="Grok Imagine" icon={<Sparkles size={15} />}>
-        <p>Grok Imagine runs in its own browser window on this PC, signed in to your Grok subscription.</p>
+        <p>Grok Imagine (Premium stills) runs in a normal Chrome window on this PC that the studio starts and attaches to, so Cloudflare sees a real browser. Chrome keeps it in its own profile, separate from your everyday one.</p>
         <p className="muted small">Profile: {status?.grok.profile ? 'saved' : 'not created yet'}{status?.grok.signedIn !== undefined ? ` · ${status.grok.signedIn ? 'signed in' : 'not signed in'}` : ''}</p>
         <div className="form-row">
           <Btn kind="solid" onClick={() => run(() => api.grokOpen(), 'Grok window opened on OmiPC')}>Open Grok</Btn>
-          <Btn onClick={() => run(() => api.grokClose(), 'Grok window closed')}>Close Grok window</Btn>
+          <Btn onClick={() => run(() => api.grokClose(), 'Studio detached from the Grok window')}>Detach</Btn>
         </div>
         <p className="muted small">Sign in yourself the first time; the studio never sees your password. If Grok asks you to prove you're human, answer it in that window and retry the job.</p>
       </Card>

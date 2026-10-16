@@ -16,7 +16,7 @@ export interface Config {
   blender: string;
   ark: { machine: string; engine: string; songs: string; node: string };
   agents: { claude: AgentCommand; codex: AgentCommand; grok: AgentCommand };
-  grok: { browser: string; profileDir: string; imagineUrl: string };
+  grok: { browser: string; profileDir: string; imagineUrl: string; port: number };
   workflows: { image: string; h3: string };
 }
 
@@ -65,7 +65,7 @@ const defaults = (): Config => ({
     codex: { cmd: codexBin.cmd, args: [...codexBin.pre, 'exec', '--skip-git-repo-check'] },
     grok: { cmd: 'grok', args: ['-p'] },
   },
-  grok: { browser: findBrowser(), profileDir: path.join(ROOT, 'data', 'grok-profile'), imagineUrl: 'https://grok.com/imagine' },
+  grok: { browser: findBrowser(), profileDir: path.join(ROOT, 'data', 'grok-chrome'), imagineUrl: 'https://grok.com/imagine', port: 9333 },
   workflows: { image: 'qwen-image', h3: 'h3-ref2va' },
 });
 

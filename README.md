@@ -78,7 +78,7 @@ you turn it on:
 - **H3 takes** use the same graph as the engine's photorealistic setting: reference-to-video with an optional guide video for the first denoise steps, character sheets and look as reference images, and start and end frames anchored as guides (first and last-frame bridges).
 - **Ark engine**: a thin adapter (`server/ark.ts`) reads film.json, writes back only scene prompts and take plans (keeping `film.json.studio-bak`), and runs the engine's own commands. Engine changes stay in the engine.
 - **Agents**: Claude, Codex and Grok Build through their own command-line tools, text in and text out.
-- **Grok Imagine**: a real browser window with its own profile, signed in to your Grok subscription by you. If Grok asks for a human check, the job stops and says so.
+- **Grok Imagine** (Premium stills): an ordinary Chrome window the studio starts with a local-only DevTools port and its own profile (Chrome refuses the port on your everyday profile), signed in to your Grok subscription by you once. Cloudflare sees a real browser. With a greybox, Grok edits the layout into the scene so the planned framing holds. If Grok asks for a human check, the job stops and says so.
 - **Blender**: `blender/greybox.py` builds each character from their model (height, build, costume, what they carry, the light they carry, or a crowd), the sequence's set, lights, mist and the camera move, and renders the guide clip in EEVEE. Storyboard stills follow the greybox's first frame and the characters' sheets as reference images.
 
 ## Run it
